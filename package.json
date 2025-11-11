@@ -1,0 +1,41 @@
+{
+  "name": "azure-openai-gpt-realtime-voice-agent",
+  "description": "Azure OpenAI Realtime SIP voice assistant service for inbound calls",
+  "author": "Gordon Mickel <gordon@mickel.tech>",
+  "module": "src/server.ts",
+  "type": "module",
+  "version": "0.0.1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gmickel/azure-openai-gpt-realtime-voice-agent.git"
+  },
+  "homepage": "https://github.com/gmickel/azure-openai-gpt-realtime-voice-agent",
+  "bugs": {
+    "url": "https://github.com/gmickel/azure-openai-gpt-realtime-voice-agent/issues"
+  },
+  "scripts": {
+    "dev": "bun run --hot src/server.ts",
+    "start": "bun run src/server.ts",
+    "test": "bun test",
+    "lint": "bun x ultracite check",
+    "lint:fix": "bun x ultracite fix",
+    "typecheck": "tsgo --noEmit",
+    "smoke:ws": "bun run scripts/smoke-realtime-ws.ts",
+    "smoke:webhook": "bun run scripts/smoke-sip-webhook.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.4",
+    "@types/bun": "latest",
+    "@types/ws": "^8.18.1",
+    "@typescript/native-preview": "^7.0.0-dev.20251111.1",
+    "lefthook": "^2.0.3",
+    "ultracite": "6.3.2"
+  },
+  "dependencies": {
+    "hono": "^4.10.4",
+    "openai": "^6.8.1",
+    "ws": "^8.18.3",
+    "zod": "^4.1.12"
+  }
+}
