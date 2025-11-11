@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gmickel/azure-openai-gpt-realtime-voice-agent.git"
+    "url": "https://github.com/gmickel/Azure-OpenAI-Realtime-SIP-voice-assistant-service-PoC-for-inbound-calls.git"
   },
-  "homepage": "https://github.com/gmickel/azure-openai-gpt-realtime-voice-agent",
+  "homepage": "https://github.com/gmickel/Azure-OpenAI-Realtime-SIP-voice-assistant-service-PoC-for-inbound-calls.git",
   "bugs": {
-    "url": "https://github.com/gmickel/azure-openai-gpt-realtime-voice-agent/issues"
+    "url": "https://github.com/gmickel/Azure-OpenAI-Realtime-SIP-voice-assistant-service-PoC-for-inbound-calls.git/issues"
   },
   "scripts": {
     "dev": "bun run --hot src/server.ts",
