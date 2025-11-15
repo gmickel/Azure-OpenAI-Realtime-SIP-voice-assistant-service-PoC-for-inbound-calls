@@ -8,6 +8,8 @@ import { config } from "./config";
 import { logCallLifecycle, logTranscript, logWebhook } from "./observe";
 import { greetingPrompt, systemPrompt } from "./prompts";
 import { realtimeToolSchemas, runTool } from "./tools";
+import { analytics } from "./analytics";
+import { logger } from "./logger";
 
 type PendingToolCall = {
   name: string;
@@ -132,6 +134,8 @@ function logResponseAudioDelta(
 function handleSpeechStarted(session: CallSession): void {
   session.userSpeaking = true;
   logCallLifecycle(session.callId, "speech_detected", { phase: "start" });
+  analytics.recordSpeechEvent(session.callId);
+
   if (!session.toolsUnlocked && Date.now() < session.bargeGuardUntil) {
     logCallLifecycle(session.callId, "barge_guard_active", {
       remainingMs: session.bargeGuardUntil - Date.now(),
@@ -139,6 +143,8 @@ function handleSpeechStarted(session: CallSession): void {
     return;
   }
   cancelActiveResponses(session);
+  analytics.recordBargeIn(session.callId);
+
   if (session.pendingTurnTimer) {
     clearTimeout(session.pendingTurnTimer);
     session.pendingTurnTimer = undefined;
@@ -199,6 +205,271 @@ app.get("/", (c) =>
 
 app.get("/healthz", (c) => c.json({ ok: true }));
 
+// Admin API endpoints for demo monitoring
+app.get("/api/stats", (c) => {
+  const stats = analytics.getSystemStats();
+  return c.json(stats);
+});
+
+app.get("/api/calls", (c) => {
+  const limit = Number(c.req.query("limit")) || 10;
+  const calls = analytics.getRecentCalls(limit);
+  return c.json({ calls, count: calls.length });
+});
+
+app.get("/api/calls/active", (c) => {
+  const calls = analytics.getActiveCalls();
+  return c.json({ calls, count: calls.length });
+});
+
+app.get("/api/calls/:callId", (c) => {
+  const callId = c.req.param("callId");
+  const metrics = analytics.getCallMetrics(callId);
+
+  if (!metrics) {
+    return c.json({ error: "Call not found" }, 404);
+  }
+
+  return c.json(metrics);
+});
+
+app.get("/api/calls/:callId/transcript", (c) => {
+  const callId = c.req.param("callId");
+  const transcript = analytics.getCallTranscript(callId);
+
+  if (transcript.length === 0) {
+    return c.json({ error: "Transcript not found" }, 404);
+  }
+
+  return c.json({ callId, transcript, count: transcript.length });
+});
+
+// Real-time dashboard endpoint
+app.get("/dashboard", (c) => {
+  const stats = analytics.getSystemStats();
+  const activeCalls = analytics.getActiveCalls();
+  const recentCalls = analytics.getRecentCalls(5);
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Assistant Dashboard</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 2rem;
+      min-height: 100vh;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 2rem;
+      text-align: center;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .card h2 {
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: 0.8;
+      margin-bottom: 0.5rem;
+    }
+    .card .value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    .card .label {
+      font-size: 0.85rem;
+      opacity: 0.7;
+    }
+    .section {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .section h2 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid rgba(255,255,255,0.2);
+    }
+    .call-item {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+      border-left: 4px solid #4ade80;
+    }
+    .call-item.active { border-left-color: #22c55e; animation: pulse 2s infinite; }
+    .call-item.completed { border-left-color: #3b82f6; }
+    .call-item.failed { border-left-color: #ef4444; }
+    .call-item.transferred { border-left-color: #f59e0b; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    .call-meta {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      opacity: 0.8;
+    }
+    .badge {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 0.25rem 0.75rem;
+      border-radius: 1rem;
+      font-size: 0.75rem;
+    }
+    .sentiment-positive { color: #4ade80; }
+    .sentiment-negative { color: #f87171; }
+    .sentiment-neutral { color: #fbbf24; }
+    .refresh-btn {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      border: none;
+      color: white;
+      padding: 1rem 2rem;
+      border-radius: 2rem;
+      cursor: pointer;
+      font-size: 1rem;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+    .refresh-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎙️ Voice Assistant Dashboard</h1>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Active Calls</h2>
+        <div class="value">${stats.activeCalls}</div>
+        <div class="label">Currently in progress</div>
+      </div>
+      <div class="card">
+        <h2>Total Calls</h2>
+        <div class="value">${stats.totalCalls}</div>
+        <div class="label">All time</div>
+      </div>
+      <div class="card">
+        <h2>Completed</h2>
+        <div class="value">${stats.completedCalls}</div>
+        <div class="label">Successfully handled</div>
+      </div>
+      <div class="card">
+        <h2>Tool Calls</h2>
+        <div class="value">${stats.totalToolCalls}</div>
+        <div class="label">Functions executed</div>
+      </div>
+      <div class="card">
+        <h2>Avg Duration</h2>
+        <div class="value">${Math.round(stats.averageCallDuration / 1000)}s</div>
+        <div class="label">Per call</div>
+      </div>
+      <div class="card">
+        <h2>Uptime</h2>
+        <div class="value">${Math.floor(stats.uptime / (1000 * 60 * 60))}h</div>
+        <div class="label">${Math.floor((stats.uptime % (1000 * 60 * 60)) / (1000 * 60))}m</div>
+      </div>
+    </div>
+
+    ${activeCalls.length > 0 ? `
+    <div class="section">
+      <h2>🔴 Active Calls (${activeCalls.length})</h2>
+      ${activeCalls.map(call => `
+        <div class="call-item active">
+          <strong>Call ${call.callId.slice(0, 8)}</strong>
+          <div class="call-meta">
+            <span>⏱️ ${Math.floor((Date.now() - call.startTime) / 1000)}s</span>
+            <span>🔧 ${call.toolCalls.length} tools</span>
+            <span>💬 ${call.transcripts.length} messages</span>
+            ${call.sentiment ? `<span class="sentiment-${call.sentiment}">😊 ${call.sentiment}</span>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    ` : ''}
+
+    <div class="section">
+      <h2>📊 Recent Calls</h2>
+      ${recentCalls.length === 0 ? '<p>No calls yet</p>' : recentCalls.map(call => `
+        <div class="call-item ${call.status}">
+          <strong>Call ${call.callId.slice(0, 8)}</strong>
+          <span class="badge">${call.status}</span>
+          <div class="call-meta">
+            <span>⏱️ ${call.duration ? Math.floor(call.duration / 1000) + 's' : 'ongoing'}</span>
+            <span>🔧 ${call.toolCalls.length} tools: ${call.toolCalls.map(t => t.name).join(', ') || 'none'}</span>
+            <span>💬 ${call.transcripts.length} messages</span>
+            ${call.sentiment ? `<span class="sentiment-${call.sentiment}">😊 ${call.sentiment}</span>` : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="section">
+      <h2>🔧 Tool Usage</h2>
+      ${Object.entries(stats.toolCallsByType).length === 0 ? '<p>No tools used yet</p>' : Object.entries(stats.toolCallsByType).map(([tool, count]) => `
+        <div style="margin-bottom: 0.75rem;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+            <span>${tool}</span>
+            <strong>${count}</strong>
+          </div>
+          <div style="background: rgba(255,255,255,0.1); height: 8px; border-radius: 4px; overflow: hidden;">
+            <div style="background: #4ade80; height: 100%; width: ${(count / stats.totalToolCalls) * 100}%; transition: width 0.3s;"></div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+
+  <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+
+  <script>
+    // Auto-refresh every 5 seconds
+    setTimeout(() => location.reload(), 5000);
+  </script>
+</body>
+</html>`;
+
+  return c.html(html);
+});
+
 app.post("/openai/webhook", async (c) => {
   const rawBody = await c.req.text();
   let payload: unknown;
@@ -238,6 +509,10 @@ app.post("/openai/webhook", async (c) => {
 });
 
 async function handleIncomingCall(callId: string): Promise<void> {
+  // Start analytics tracking
+  analytics.startCall(callId);
+  logger.call(callId, "Incoming call received");
+
   const sessionConfig: RealtimeSessionConfig = {
     type: "realtime",
     model: config.model,
@@ -249,14 +524,17 @@ async function handleIncomingCall(callId: string): Promise<void> {
   try {
     await acceptCall(callId, sessionConfig);
     logCallLifecycle(callId, "accepted");
+    logger.call(callId, "Call accepted successfully");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("call_id_not_found")) {
       logCallLifecycle(callId, "accept_skipped", {
         reason: "call_id_not_found",
       });
+      analytics.endCall(callId, "failed");
       return;
     }
+    analytics.endCall(callId, "failed");
     throw error;
   }
 
@@ -339,6 +617,21 @@ function attachSidebandWebSocket(callId: string): void {
 
   ws.on("close", () => {
     logCallLifecycle(callId, "ws_closed");
+    analytics.endCall(callId, "completed");
+    logger.call(callId, "Call ended");
+
+    // Log call summary
+    const metrics = analytics.getCallMetrics(callId);
+    if (metrics) {
+      logger.callSummary(callId, {
+        duration: metrics.duration,
+        toolCalls: metrics.toolCalls.length,
+        transcripts: metrics.transcripts.length,
+        sentiment: metrics.sentiment,
+        status: metrics.status,
+      });
+    }
+
     sessions.delete(callId);
   });
 
@@ -465,6 +758,17 @@ function logInputTranscript(
     logCallLifecycle(session.callId, "transcript_completed", {
       text: truncate(transcript, 160),
     });
+
+    // Track transcript in analytics
+    analytics.recordTranscript(session.callId, {
+      timestamp: Date.now(),
+      speaker: "user",
+      text: transcript,
+    });
+
+    // Enhanced logging
+    logger.transcript(session.callId, "user", transcript);
+
     if (!session.heardUser) {
       session.heardUser = true;
       session.bargeGuardUntil = 0;
@@ -540,6 +844,7 @@ function maybeRespond(session: CallSession, request: ResponseRequest): void {
     source: request.source,
     snippet,
   });
+  analytics.recordResponse(session.callId);
   session.responseGateUntil = now + session.minGapMs;
 }
 
@@ -621,6 +926,7 @@ async function fulfillToolCall(
     }
   }
 
+  const toolStartTime = Date.now();
   try {
     logCallLifecycle(session.callId, "tool_dispatch", {
       name: pending.name,
@@ -632,13 +938,39 @@ async function fulfillToolCall(
         200
       ),
     });
+    logger.tool(session.callId, pending.name, "start", parsedArgs);
+
     const result = await runTool(pending.name, parsedArgs, {
       callId: session.callId,
+    });
+
+    const toolDuration = Date.now() - toolStartTime;
+
+    // Track tool call in analytics
+    analytics.recordToolCall(session.callId, {
+      name: pending.name,
+      timestamp: toolStartTime,
+      duration: toolDuration,
+      success: true,
+      args: parsedArgs,
+    });
+
+    logger.tool(session.callId, pending.name, "success", {
+      duration: toolDuration,
+      output: result.output,
     });
 
     const functionCallId = getString(event.call_id);
     if (functionCallId) {
       sendFunctionResult(session, functionCallId, result.output);
+    }
+
+    // Track transfer if handoff_human was called
+    if (pending.name === "handoff_human") {
+      analytics.setTransferReason(
+        session.callId,
+        (parsedArgs as { reason?: string })?.reason ?? "unknown"
+      );
     }
 
     const followUp =
@@ -650,6 +982,23 @@ async function fulfillToolCall(
       queueIfBlocked: true,
     });
   } catch (error) {
+    const toolDuration = Date.now() - toolStartTime;
+    const errorMessage = error instanceof Error ? error.message : "unknown";
+
+    // Track failed tool call
+    analytics.recordToolCall(session.callId, {
+      name: pending.name,
+      timestamp: toolStartTime,
+      duration: toolDuration,
+      success: false,
+      error: errorMessage,
+    });
+
+    logger.tool(session.callId, pending.name, "error", {
+      duration: toolDuration,
+      error: errorMessage,
+    });
+
     console.error("Tool execution failed", error);
     maybeRespond(session, {
       instructions:
@@ -693,5 +1042,29 @@ function cancelActiveResponses(session: CallSession): void {
 
 if (import.meta.main) {
   const server = serve({ fetch: app.fetch, port: config.port });
-  console.info(`Server listening on ${server.url}`);
+
+  // Display impressive startup banner
+  logger.banner("Azure OpenAI Realtime Voice Assistant");
+  logger.success("Server started successfully", {
+    url: server.url.toString(),
+    port: config.port,
+    model: config.model,
+    voice: config.voice,
+  });
+  logger.info("Dashboard available at: /dashboard");
+  logger.info("API endpoints:", {
+    stats: "/api/stats",
+    calls: "/api/calls",
+    activeCalls: "/api/calls/active",
+  });
+  logger.separator();
+  logger.info("Waiting for incoming calls...");
+
+  // Log stats every 5 minutes
+  setInterval(() => {
+    const stats = analytics.getSystemStats();
+    if (stats.totalCalls > 0) {
+      logger.stats(stats);
+    }
+  }, 5 * 60 * 1000);
 }

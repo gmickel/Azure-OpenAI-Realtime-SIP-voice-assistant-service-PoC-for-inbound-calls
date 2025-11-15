@@ -22,11 +22,13 @@
 ## Layout (authoritative)
 
 `/src`
-- **server.ts** — Hono app: webhook + WS orchestration + barge-in
+- **server.ts** — Hono app: webhook + WS orchestration + barge-in + admin API + dashboard
 - **callflow.ts** — REST helpers: accept/refer/hangup, Azure URL shaping
 - **prompts.ts** — default neutral English prompts (edit directly if you need a different persona)
-- **tools.ts** — tool schemas + handlers (handoff, lookup, inventory, callback)
+- **tools.ts** — tool schemas + handlers (9 total: handoff, lookup, inventory, callback, weather, company hours, product search, store locator)
 - **observe.ts** — structured logs + redaction
+- **analytics.ts** — comprehensive metrics tracking, call history, sentiment analysis
+- **logger.ts** — enhanced color-coded console logging with beautiful output
 - **__tests__** — basic PII redaction test
 
 ---

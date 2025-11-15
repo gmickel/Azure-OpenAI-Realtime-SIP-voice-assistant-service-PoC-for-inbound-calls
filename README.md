@@ -12,8 +12,9 @@ I made this because I wanted to test the latency of the Realtime API when everyt
 * **What it does:** Answers phone calls sent via **Twilio Elastic SIP** to **Azure OpenAI Realtime (SIP)**, then controls the conversation over a sideband **WebSocket**.
 * **Why Azure:** Keep data in-region, enterprise auth/quota, and reduce path length when deployed in Azure.
 * **Tech:** Bun + Hono, `openai` SDK, `ws`, `zod`.
-* **Tools included:**
-  `handoff_human` (SIP REFER), `lookup_order`, `check_inventory`, `schedule_callback` — all pluggable.
+* **Tools included (9 total):**
+  `handoff_human` (SIP REFER), `lookup_order`, `check_inventory`, `schedule_callback`, `get_weather`, `check_company_hours`, `search_products`, `find_store_location` — all pluggable.
+* **Demo Features:** Real-time dashboard, analytics engine, enhanced logging, admin API. See [DEMO_FEATURES.md](./DEMO_FEATURES.md)
 
 ---
 
@@ -190,6 +191,46 @@ Keep using your standard `OPENAI_API_KEY`, `REALTIME_MODEL`, `REALTIME_VOICE`, e
 3. Watch the logs—you should see the exact same greeting/tool flow, just without Azure in the middle.
 
 > Tip: The OpenAI console pings the webhook URL before saving. Keep ngrok/Cloudflare Tunnel running so validation succeeds (Twilio’s tutorial highlights using a static ngrok domain for this).
+
+---
+
+## 🎉 Demo Features
+
+This project includes extensive demo and monitoring capabilities:
+
+### Real-Time Dashboard
+Visit `http://localhost:8000/dashboard` to see:
+- Live call statistics and metrics
+- Active calls with real-time updates
+- Recent call history with sentiment analysis
+- Tool usage analytics with visual charts
+- Auto-refreshes every 5 seconds
+
+### Admin API Endpoints
+- `GET /api/stats` - System-wide statistics
+- `GET /api/calls` - Recent calls (with `?limit=N`)
+- `GET /api/calls/active` - Currently active calls
+- `GET /api/calls/:callId` - Detailed call metrics
+- `GET /api/calls/:callId/transcript` - Full conversation transcript
+
+### Enhanced Console Logging
+Beautiful color-coded logs with:
+- 📞 Call lifecycle events
+- 🔧 Tool execution tracking
+- 💬 Conversation transcripts
+- Sentiment analysis
+- Call summaries with metrics
+- Periodic system statistics
+
+### Comprehensive Analytics
+- Call duration tracking
+- Tool usage patterns
+- Sentiment analysis (positive/neutral/negative)
+- Barge-in event tracking
+- Response timing metrics
+- Success/failure rates
+
+**See [DEMO_FEATURES.md](./DEMO_FEATURES.md) for complete documentation and demo script suggestions.**
 
 ---
 

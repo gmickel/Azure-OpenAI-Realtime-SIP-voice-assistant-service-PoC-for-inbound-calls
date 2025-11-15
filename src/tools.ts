@@ -52,6 +52,38 @@ const callbackSchema = z.object({
     .describe("Desired callback window (e.g., 'tomorrow 10am')"),
 });
 
+const weatherSchema = z.object({
+  location: z
+    .string()
+    .min(2)
+    .describe("City or location name (e.g., 'Stockholm', 'New York')"),
+});
+
+const companyHoursSchema = z.object({
+  department: z
+    .string()
+    .optional()
+    .describe("Specific department (e.g., 'sales', 'support')"),
+});
+
+const productSearchSchema = z.object({
+  query: z
+    .string()
+    .min(2)
+    .describe("Product name or description to search for"),
+  category: z
+    .string()
+    .optional()
+    .describe("Product category (e.g., 'electronics', 'clothing')"),
+});
+
+const storeLocationSchema = z.object({
+  zipCode: z
+    .string()
+    .optional()
+    .describe("ZIP code or postal code for location search"),
+});
+
 const definitions: ToolDefinition[] = [
   {
     name: "handoff_human",
@@ -178,7 +210,177 @@ const definitions: ToolDefinition[] = [
           preferredTime: typedArgs.preferredTime,
         },
         followUpInstructions:
-          "Confirm the agreed callback window, share the reference number, and ask if there’s anything else to handle.",
+          "Confirm the agreed callback window, share the reference number, and ask if there's anything else to handle.",
+      };
+    },
+  },
+  {
+    name: "get_weather",
+    description:
+      "Provides current weather and forecast for a specified location.",
+    schema: weatherSchema,
+    jsonSchema: {
+      type: "object",
+      properties: {
+        location: {
+          type: "string",
+          description: "City or location name to get weather for.",
+        },
+      },
+      required: ["location"],
+      additionalProperties: false,
+    },
+    handler: (args: unknown) => {
+      const typedArgs = weatherSchema.parse(args);
+      // Demo data - in production, call a real weather API
+      const conditions = ["sunny", "partly cloudy", "cloudy", "rainy"];
+      const condition = conditions[Math.floor(Math.random() * conditions.length)];
+      const temp = Math.floor(Math.random() * 20) + 10; // 10-30°C
+      const humidity = Math.floor(Math.random() * 40) + 40; // 40-80%
+
+      return {
+        output: {
+          location: typedArgs.location,
+          temperature_celsius: temp,
+          temperature_fahrenheit: Math.round((temp * 9) / 5 + 32),
+          condition,
+          humidity_percent: humidity,
+          forecast: `${condition} conditions expected to continue`,
+        },
+        followUpInstructions: `Share the weather for ${typedArgs.location}: ${temp}°C (${Math.round((temp * 9) / 5 + 32)}°F) and ${condition}. Ask if they need anything else.`,
+      };
+    },
+  },
+  {
+    name: "check_company_hours",
+    description:
+      "Retrieves business hours for the company or a specific department.",
+    schema: companyHoursSchema,
+    jsonSchema: {
+      type: "object",
+      properties: {
+        department: {
+          type: "string",
+          description: "Optional department name (sales, support, etc.).",
+        },
+      },
+      additionalProperties: false,
+    },
+    handler: (args: unknown) => {
+      const typedArgs = companyHoursSchema.parse(args);
+      const dept = typedArgs.department || "general";
+
+      const hours: Record<string, { weekday: string; weekend: string }> = {
+        sales: { weekday: "9:00 AM - 6:00 PM", weekend: "10:00 AM - 4:00 PM" },
+        support: {
+          weekday: "8:00 AM - 8:00 PM",
+          weekend: "9:00 AM - 5:00 PM",
+        },
+        general: {
+          weekday: "9:00 AM - 5:00 PM",
+          weekend: "Closed on weekends",
+        },
+      };
+
+      const deptHours = hours[dept.toLowerCase()] || hours.general;
+
+      return {
+        output: {
+          department: dept,
+          weekday_hours: deptHours.weekday,
+          weekend_hours: deptHours.weekend,
+          timezone: "CET",
+          currently_open: new Date().getHours() >= 9 && new Date().getHours() < 17,
+        },
+        followUpInstructions: `Let the caller know ${dept} hours are ${deptHours.weekday} on weekdays and ${deptHours.weekend} on weekends. Ask if there's anything else you can help with.`,
+      };
+    },
+  },
+  {
+    name: "search_products",
+    description:
+      "Searches the product catalog and recommends items based on query.",
+    schema: productSearchSchema,
+    jsonSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Product search query.",
+        },
+        category: {
+          type: "string",
+          description: "Optional category filter.",
+        },
+      },
+      required: ["query"],
+      additionalProperties: false,
+    },
+    handler: (args: unknown) => {
+      const typedArgs = productSearchSchema.parse(args);
+
+      // Demo data - in production, query real product database
+      const demoProducts = [
+        { name: "Premium Wireless Headphones", price: 299, rating: 4.5 },
+        { name: "Smart Watch Pro", price: 399, rating: 4.7 },
+        { name: "Portable Speaker", price: 149, rating: 4.3 },
+      ];
+
+      const results = demoProducts.slice(0, 2); // Return top 2
+
+      return {
+        output: {
+          query: typedArgs.query,
+          category: typedArgs.category || "all",
+          results_count: results.length,
+          top_matches: results,
+          total_available: demoProducts.length,
+        },
+        followUpInstructions: `Share the top product matches: ${results.map((p) => `${p.name} at $${p.price}`).join(", ")}. Ask if they'd like details on any specific item or help with ordering.`,
+      };
+    },
+  },
+  {
+    name: "find_store_location",
+    description: "Finds the nearest store location based on ZIP code or area.",
+    schema: storeLocationSchema,
+    jsonSchema: {
+      type: "object",
+      properties: {
+        zipCode: {
+          type: "string",
+          description: "ZIP/postal code for location search.",
+        },
+      },
+      additionalProperties: false,
+    },
+    handler: (args: unknown) => {
+      const typedArgs = storeLocationSchema.parse(args);
+
+      // Demo data - in production, query real store database
+      const stores = [
+        {
+          name: "Downtown Store",
+          address: "123 Main Street",
+          distance_km: 2.5,
+          phone: "+1-555-0100",
+        },
+        {
+          name: "Mall Location",
+          address: "456 Shopping Center",
+          distance_km: 5.2,
+          phone: "+1-555-0200",
+        },
+      ];
+
+      return {
+        output: {
+          search_area: typedArgs.zipCode || "your area",
+          nearest_store: stores[0],
+          additional_locations: stores.length - 1,
+          stores,
+        },
+        followUpInstructions: `Share that the nearest store is ${stores[0].name} at ${stores[0].address}, about ${stores[0].distance_km}km away. Provide the phone number ${stores[0].phone}. Ask if they need directions or hours.`,
       };
     },
   },
