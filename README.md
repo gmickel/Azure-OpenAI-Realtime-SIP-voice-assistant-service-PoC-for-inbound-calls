@@ -258,8 +258,9 @@ Beautiful color-coded logs with:
 | `PORT`                  | ➖         | Defaults to `8000`.                                                                            |
 | `OPENAI_BASE`           | ✅ (Azure) | `https://<resource>.openai.azure.com/openai`                                                   |
 | `REALTIME_WS_BASE`      | ✅ (Azure) | `wss://<resource>.openai.azure.com/openai/v1/realtime`                                         |
-| `REALTIME_API_VERSION`  | ✖         | Leave empty for this project’s Realtime calls.                                                 |
+| `REALTIME_API_VERSION`  | ✖         | Leave empty for this project's Realtime calls.                                                 |
 | `TEST_MODE`             | ➖         | `1` disables signature verification for local smoke tests only.                                |
+| `LOG_FORMAT`            | ➖         | `pretty` for color-coded logs (default); omit or set to `json` for structured JSON logs.       |
 
 ---
 

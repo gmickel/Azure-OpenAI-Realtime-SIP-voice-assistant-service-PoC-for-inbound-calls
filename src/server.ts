@@ -2,14 +2,13 @@ import { serve } from "bun";
 import { Hono } from "hono";
 import OpenAI from "openai";
 import WebSocket from "ws";
-
+import { analytics } from "./analytics";
 import { acceptCall, type RealtimeSessionConfig } from "./callflow";
 import { config } from "./config";
+import { logger } from "./logger";
 import { logCallLifecycle, logTranscript, logWebhook } from "./observe";
 import { greetingPrompt, systemPrompt } from "./prompts";
 import { realtimeToolSchemas, runTool } from "./tools";
-import { analytics } from "./analytics";
-import { logger } from "./logger";
 
 type PendingToolCall = {
   name: string;
@@ -370,6 +369,95 @@ app.get("/dashboard", (c) => {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(0,0,0,0.3);
     }
+    .view-transcript-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      transition: all 0.2s ease;
+      display: inline-block;
+    }
+    .view-transcript-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      padding: 2rem;
+      overflow-y: auto;
+    }
+    .modal.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-content {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(20px);
+      border-radius: 1rem;
+      padding: 2rem;
+      max-width: 800px;
+      width: 100%;
+      max-height: 80vh;
+      overflow-y: auto;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    .close-btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    .close-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    .transcript-entry {
+      margin-bottom: 1rem;
+      padding: 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 0.5rem;
+      border-left: 3px solid #4ade80;
+    }
+    .transcript-entry.assistant {
+      border-left-color: #3b82f6;
+    }
+    .transcript-speaker {
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      opacity: 0.8;
+    }
+    .transcript-text {
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+    .transcript-time {
+      font-size: 0.75rem;
+      opacity: 0.6;
+      margin-top: 0.5rem;
+    }
   </style>
 </head>
 <body>
@@ -409,42 +497,72 @@ app.get("/dashboard", (c) => {
       </div>
     </div>
 
-    ${activeCalls.length > 0 ? `
+    ${
+      activeCalls.length > 0
+        ? `
     <div class="section">
       <h2>🔴 Active Calls (${activeCalls.length})</h2>
-      ${activeCalls.map(call => `
+      ${activeCalls
+        .map(
+          (call) => `
         <div class="call-item active">
           <strong>Call ${call.callId.slice(0, 8)}</strong>
           <div class="call-meta">
             <span>⏱️ ${Math.floor((Date.now() - call.startTime) / 1000)}s</span>
             <span>🔧 ${call.toolCalls.length} tools</span>
             <span>💬 ${call.transcripts.length} messages</span>
-            ${call.sentiment ? `<span class="sentiment-${call.sentiment}">😊 ${call.sentiment}</span>` : ''}
+            ${call.sentiment ? `<span class="sentiment-${call.sentiment}">😊 ${call.sentiment}</span>` : ""}
           </div>
         </div>
-      `).join('')}
+      `
+        )
+        .join("")}
     </div>
-    ` : ''}
+    `
+        : ""
+    }
 
     <div class="section">
       <h2>📊 Recent Calls</h2>
-      ${recentCalls.length === 0 ? '<p>No calls yet</p>' : recentCalls.map(call => `
+      ${
+        recentCalls.length === 0
+          ? "<p>No calls yet</p>"
+          : recentCalls
+              .map(
+                (call) => `
         <div class="call-item ${call.status}">
           <strong>Call ${call.callId.slice(0, 8)}</strong>
           <span class="badge">${call.status}</span>
           <div class="call-meta">
-            <span>⏱️ ${call.duration ? Math.floor(call.duration / 1000) + 's' : 'ongoing'}</span>
-            <span>🔧 ${call.toolCalls.length} tools: ${call.toolCalls.map(t => t.name).join(', ') || 'none'}</span>
+            <span>⏱️ ${call.duration ? `${Math.floor(call.duration / 1000)}s` : "ongoing"}</span>
+            <span>🔧 ${call.toolCalls.length} tools: ${call.toolCalls.map((t) => t.name).join(", ") || "none"}</span>
             <span>💬 ${call.transcripts.length} messages</span>
-            ${call.sentiment ? `<span class="sentiment-${call.sentiment}">😊 ${call.sentiment}</span>` : ''}
+            ${call.sentiment ? `<span class="sentiment-${call.sentiment}">😊 ${call.sentiment}</span>` : ""}
           </div>
+          ${
+            call.transcripts.length > 0
+              ? `
+            <button class="view-transcript-btn" onclick="showTranscript('${call.callId}')">
+              📝 View Transcript
+            </button>
+          `
+              : ""
+          }
         </div>
-      `).join('')}
+      `
+              )
+              .join("")
+      }
     </div>
 
     <div class="section">
       <h2>🔧 Tool Usage</h2>
-      ${Object.entries(stats.toolCallsByType).length === 0 ? '<p>No tools used yet</p>' : Object.entries(stats.toolCallsByType).map(([tool, count]) => `
+      ${
+        Object.entries(stats.toolCallsByType).length === 0
+          ? "<p>No tools used yet</p>"
+          : Object.entries(stats.toolCallsByType)
+              .map(
+                ([tool, count]) => `
         <div style="margin-bottom: 0.75rem;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
             <span>${tool}</span>
@@ -454,13 +572,75 @@ app.get("/dashboard", (c) => {
             <div style="background: #4ade80; height: 100%; width: ${(count / stats.totalToolCalls) * 100}%; transition: width 0.3s;"></div>
           </div>
         </div>
-      `).join('')}
+      `
+              )
+              .join("")
+      }
     </div>
   </div>
 
   <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
 
+  <div id="transcriptModal" class="modal" onclick="closeModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h2 id="modalTitle">Transcript</h2>
+        <button class="close-btn" onclick="closeModal()">✕ Close</button>
+      </div>
+      <div id="transcriptContent">
+        Loading...
+      </div>
+    </div>
+  </div>
+
   <script>
+    async function showTranscript(callId) {
+      const modal = document.getElementById('transcriptModal');
+      const content = document.getElementById('transcriptContent');
+      const title = document.getElementById('modalTitle');
+
+      modal.classList.add('active');
+      content.innerHTML = '<p style="text-align: center; padding: 2rem;">Loading transcript...</p>';
+      title.textContent = 'Transcript - Call ' + callId.slice(0, 8);
+
+      try {
+        const response = await fetch('/api/calls/' + callId + '/transcript');
+        const data = await response.json();
+
+        if (data.error) {
+          content.innerHTML = '<p style="color: #f87171;">No transcript available</p>';
+          return;
+        }
+
+        if (data.transcript.length === 0) {
+          content.innerHTML = '<p style="opacity: 0.7;">No messages yet</p>';
+          return;
+        }
+
+        content.innerHTML = data.transcript.map(entry => {
+          const time = new Date(entry.timestamp).toLocaleTimeString();
+          const speakerClass = entry.speaker === 'assistant' ? 'assistant' : 'user';
+          const speakerLabel = entry.speaker === 'user' ? '👤 User' : '🤖 Assistant';
+
+          return \`
+            <div class="transcript-entry \${speakerClass}">
+              <div class="transcript-speaker">\${speakerLabel}</div>
+              <div class="transcript-text">\${entry.text}</div>
+              <div class="transcript-time">\${time}\${entry.sentiment ? ' • ' + entry.sentiment : ''}</div>
+            </div>
+          \`;
+        }).join('');
+      } catch (error) {
+        content.innerHTML = '<p style="color: #f87171;">Error loading transcript</p>';
+      }
+    }
+
+    function closeModal(event) {
+      if (!event || event.target.id === 'transcriptModal') {
+        document.getElementById('transcriptModal').classList.remove('active');
+      }
+    }
+
     // Auto-refresh every 5 seconds
     setTimeout(() => location.reload(), 5000);
   </script>
@@ -1061,10 +1241,13 @@ if (import.meta.main) {
   logger.info("Waiting for incoming calls...");
 
   // Log stats every 5 minutes
-  setInterval(() => {
-    const stats = analytics.getSystemStats();
-    if (stats.totalCalls > 0) {
-      logger.stats(stats);
-    }
-  }, 5 * 60 * 1000);
+  setInterval(
+    () => {
+      const stats = analytics.getSystemStats();
+      if (stats.totalCalls > 0) {
+        logger.stats(stats);
+      }
+    },
+    5 * 60 * 1000
+  );
 }

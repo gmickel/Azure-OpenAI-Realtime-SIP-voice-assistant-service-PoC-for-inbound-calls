@@ -71,6 +71,8 @@ A beautiful, auto-refreshing web dashboard that shows:
 
 ## 🎨 Beautiful Console Logging
 
+**Setup**: Add `LOG_FORMAT=pretty` to your `.env` file (already in `env.template` by default)
+
 Enhanced color-coded logs that make monitoring a visual experience:
 
 ### Log Types

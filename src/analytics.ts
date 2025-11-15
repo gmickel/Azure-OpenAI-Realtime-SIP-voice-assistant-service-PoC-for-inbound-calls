@@ -48,9 +48,9 @@ export type SystemStats = {
 };
 
 class AnalyticsEngine {
-  private callMetrics = new Map<string, CallMetrics>();
-  private systemStats: SystemStats;
-  private startTime: number;
+  private readonly callMetrics = new Map<string, CallMetrics>();
+  private readonly systemStats: SystemStats;
+  private readonly startTime: number;
 
   constructor() {
     this.startTime = Date.now();
@@ -82,8 +82,8 @@ class AnalyticsEngine {
     };
 
     this.callMetrics.set(callId, metrics);
-    this.systemStats.totalCalls++;
-    this.systemStats.activeCalls++;
+    this.systemStats.totalCalls += 1;
+    this.systemStats.activeCalls += 1;
   }
 
   endCall(
@@ -99,14 +99,17 @@ class AnalyticsEngine {
     metrics.duration = metrics.endTime - metrics.startTime;
     metrics.status = status;
 
-    this.systemStats.activeCalls = Math.max(0, this.systemStats.activeCalls - 1);
+    this.systemStats.activeCalls = Math.max(
+      0,
+      this.systemStats.activeCalls - 1
+    );
 
     if (status === "completed") {
-      this.systemStats.completedCalls++;
+      this.systemStats.completedCalls += 1;
     } else if (status === "failed") {
-      this.systemStats.failedCalls++;
+      this.systemStats.failedCalls += 1;
     } else if (status === "transferred") {
-      this.systemStats.transferredCalls++;
+      this.systemStats.transferredCalls += 1;
     }
 
     this.updateAverageCallDuration();
@@ -119,12 +122,12 @@ class AnalyticsEngine {
     }
 
     metrics.toolCalls.push(metric);
-    this.systemStats.totalToolCalls++;
+    this.systemStats.totalToolCalls += 1;
 
     if (!this.systemStats.toolCallsByType[metric.name]) {
       this.systemStats.toolCallsByType[metric.name] = 0;
     }
-    this.systemStats.toolCallsByType[metric.name]++;
+    this.systemStats.toolCallsByType[metric.name] += 1;
   }
 
   recordTranscript(callId: string, entry: TranscriptEntry): void {
@@ -145,29 +148,25 @@ class AnalyticsEngine {
   recordResponse(callId: string): void {
     const metrics = this.callMetrics.get(callId);
     if (metrics) {
-      metrics.responseCount++;
+      metrics.responseCount += 1;
     }
   }
 
   recordSpeechEvent(callId: string): void {
     const metrics = this.callMetrics.get(callId);
     if (metrics) {
-      metrics.userSpeechEvents++;
+      metrics.userSpeechEvents += 1;
     }
   }
 
   recordBargeIn(callId: string): void {
     const metrics = this.callMetrics.get(callId);
     if (metrics) {
-      metrics.bargeInEvents++;
+      metrics.bargeInEvents += 1;
     }
   }
 
-  setCallMetadata(
-    callId: string,
-    key: string,
-    value: unknown
-  ): void {
+  setCallMetadata(callId: string, key: string, value: unknown): void {
     const metrics = this.callMetrics.get(callId);
     if (metrics) {
       metrics.metadata[key] = value;
@@ -242,7 +241,8 @@ class AnalyticsEngine {
       (sum, m) => sum + (m.duration ?? 0),
       0
     );
-    this.systemStats.averageCallDuration = totalDuration / completedCalls.length;
+    this.systemStats.averageCallDuration =
+      totalDuration / completedCalls.length;
   }
 
   getCallMetrics(callId: string): CallMetrics | undefined {
@@ -280,15 +280,13 @@ class AnalyticsEngine {
   generateCallSummary(callId: string): string | undefined {
     const metrics = this.callMetrics.get(callId);
     if (!metrics) {
-      return undefined;
+      return;
     }
 
     const duration = metrics.duration
       ? `${Math.floor(metrics.duration / 1000)}s`
       : "ongoing";
-    const toolCallSummary = metrics.toolCalls
-      .map((t) => t.name)
-      .join(", ");
+    const toolCallSummary = metrics.toolCalls.map((t) => t.name).join(", ");
     const transcriptCount = metrics.transcripts.length;
 
     return `Call ${callId.slice(0, 8)}: ${duration}, ${transcriptCount} messages, tools: [${toolCallSummary}], sentiment: ${metrics.sentiment ?? "unknown"}`;

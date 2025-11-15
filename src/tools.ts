@@ -234,7 +234,8 @@ const definitions: ToolDefinition[] = [
       const typedArgs = weatherSchema.parse(args);
       // Demo data - in production, call a real weather API
       const conditions = ["sunny", "partly cloudy", "cloudy", "rainy"];
-      const condition = conditions[Math.floor(Math.random() * conditions.length)];
+      const condition =
+        conditions[Math.floor(Math.random() * conditions.length)];
       const temp = Math.floor(Math.random() * 20) + 10; // 10-30°C
       const humidity = Math.floor(Math.random() * 40) + 40; // 40-80%
 
@@ -290,7 +291,8 @@ const definitions: ToolDefinition[] = [
           weekday_hours: deptHours.weekday,
           weekend_hours: deptHours.weekend,
           timezone: "CET",
-          currently_open: new Date().getHours() >= 9 && new Date().getHours() < 17,
+          currently_open:
+            new Date().getHours() >= 9 && new Date().getHours() < 17,
         },
         followUpInstructions: `Let the caller know ${dept} hours are ${deptHours.weekday} on weekdays and ${deptHours.weekend} on weekends. Ask if there's anything else you can help with.`,
       };

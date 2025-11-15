@@ -29,9 +29,20 @@ const colors = {
   bgWhite: "\x1b[47m",
 };
 
-type LogLevel = "info" | "success" | "warning" | "error" | "debug" | "call" | "tool" | "transcript";
+type LogLevel =
+  | "info"
+  | "success"
+  | "warning"
+  | "error"
+  | "debug"
+  | "call"
+  | "tool"
+  | "transcript";
 
-const levelConfig: Record<LogLevel, { color: string; symbol: string; label: string }> = {
+const levelConfig: Record<
+  LogLevel,
+  { color: string; symbol: string; label: string }
+> = {
   info: { color: colors.blue, symbol: "ℹ", label: "INFO" },
   success: { color: colors.green, symbol: "✓", label: "SUCCESS" },
   warning: { color: colors.yellow, symbol: "⚠", label: "WARNING" },
@@ -63,13 +74,18 @@ function formatObject(obj: unknown): string {
 }
 
 export class Logger {
-  private isDemoMode: boolean;
+  private readonly isDemoMode: boolean;
 
-  constructor(demoMode = true) {
+  constructor(demoMode = process.env.LOG_FORMAT === "pretty") {
     this.isDemoMode = demoMode;
   }
 
-  private log(level: LogLevel, message: string, data?: unknown, callId?: string): void {
+  private log(
+    level: LogLevel,
+    message: string,
+    data?: unknown,
+    callId?: string
+  ): void {
     if (!this.isDemoMode) {
       // Fallback to simple console.log if demo mode is off
       console.log(JSON.stringify({ level, message, data, callId }));
@@ -104,9 +120,10 @@ export class Logger {
   }
 
   error(message: string, error?: unknown): void {
-    const errorData = error instanceof Error
-      ? { message: error.message, stack: error.stack }
-      : error;
+    const errorData =
+      error instanceof Error
+        ? { message: error.message, stack: error.stack }
+        : error;
     this.log("error", message, errorData);
   }
 
@@ -118,15 +135,30 @@ export class Logger {
     this.log("call", event, data, callId);
   }
 
-  tool(callId: string, toolName: string, status: "start" | "success" | "error", data?: unknown): void {
-    const statusSymbol = status === "success" ? "✓" : status === "error" ? "✗" : "→";
+  tool(
+    callId: string,
+    toolName: string,
+    status: "start" | "success" | "error",
+    data?: unknown
+  ): void {
+    let statusSymbol = "→";
+    if (status === "success") {
+      statusSymbol = "✓";
+    } else if (status === "error") {
+      statusSymbol = "✗";
+    }
     this.log("tool", `${statusSymbol} ${toolName}`, data, callId);
   }
 
-  transcript(callId: string, speaker: "user" | "assistant", text: string): void {
-    const speakerLabel = speaker === "user"
-      ? `${colors.green}USER${colors.reset}`
-      : `${colors.blue}ASSISTANT${colors.reset}`;
+  transcript(
+    callId: string,
+    speaker: "user" | "assistant",
+    text: string
+  ): void {
+    const speakerLabel =
+      speaker === "user"
+        ? `${colors.green}USER${colors.reset}`
+        : `${colors.blue}ASSISTANT${colors.reset}`;
     this.log("transcript", `${speakerLabel}: ${text}`, undefined, callId);
   }
 
@@ -148,13 +180,16 @@ export class Logger {
     console.log(`${colors.dim}${"─".repeat(80)}${colors.reset}`);
   }
 
-  callSummary(callId: string, summary: {
-    duration?: number;
-    toolCalls: number;
-    transcripts: number;
-    sentiment?: string;
-    status: string;
-  }): void {
+  callSummary(
+    callId: string,
+    summary: {
+      duration?: number;
+      toolCalls: number;
+      transcripts: number;
+      sentiment?: string;
+      status: string;
+    }
+  ): void {
     if (!this.isDemoMode) {
       return;
     }
@@ -163,19 +198,37 @@ export class Logger {
       ? `${Math.floor(summary.duration / 1000)}s`
       : "ongoing";
 
-    const sentimentColor =
-      summary.sentiment === "positive" ? colors.green :
-      summary.sentiment === "negative" ? colors.red :
-      colors.yellow;
+    let sentimentColor = colors.yellow;
+    if (summary.sentiment === "positive") {
+      sentimentColor = colors.green;
+    } else if (summary.sentiment === "negative") {
+      sentimentColor = colors.red;
+    }
 
-    console.log(`\n${colors.bright}${colors.cyan}┌─ Call Summary ─────────────────────────────────────────────┐${colors.reset}`);
-    console.log(`${colors.cyan}│${colors.reset} Call ID:     ${formatCallId(callId)}`);
-    console.log(`${colors.cyan}│${colors.reset} Duration:    ${colors.bright}${durationStr}${colors.reset}`);
-    console.log(`${colors.cyan}│${colors.reset} Tool Calls:  ${colors.bright}${summary.toolCalls}${colors.reset}`);
-    console.log(`${colors.cyan}│${colors.reset} Messages:    ${colors.bright}${summary.transcripts}${colors.reset}`);
-    console.log(`${colors.cyan}│${colors.reset} Sentiment:   ${sentimentColor}${summary.sentiment ?? "unknown"}${colors.reset}`);
-    console.log(`${colors.cyan}│${colors.reset} Status:      ${colors.bright}${summary.status}${colors.reset}`);
-    console.log(`${colors.bright}${colors.cyan}└────────────────────────────────────────────────────────────┘${colors.reset}\n`);
+    console.log(
+      `\n${colors.bright}${colors.cyan}┌─ Call Summary ─────────────────────────────────────────────┐${colors.reset}`
+    );
+    console.log(
+      `${colors.cyan}│${colors.reset} Call ID:     ${formatCallId(callId)}`
+    );
+    console.log(
+      `${colors.cyan}│${colors.reset} Duration:    ${colors.bright}${durationStr}${colors.reset}`
+    );
+    console.log(
+      `${colors.cyan}│${colors.reset} Tool Calls:  ${colors.bright}${summary.toolCalls}${colors.reset}`
+    );
+    console.log(
+      `${colors.cyan}│${colors.reset} Messages:    ${colors.bright}${summary.transcripts}${colors.reset}`
+    );
+    console.log(
+      `${colors.cyan}│${colors.reset} Sentiment:   ${sentimentColor}${summary.sentiment ?? "unknown"}${colors.reset}`
+    );
+    console.log(
+      `${colors.cyan}│${colors.reset} Status:      ${colors.bright}${summary.status}${colors.reset}`
+    );
+    console.log(
+      `${colors.bright}${colors.cyan}└────────────────────────────────────────────────────────────┘${colors.reset}\n`
+    );
   }
 
   stats(stats: {
@@ -190,15 +243,31 @@ export class Logger {
     }
 
     const uptimeHours = Math.floor(stats.uptime / (1000 * 60 * 60));
-    const uptimeMinutes = Math.floor((stats.uptime % (1000 * 60 * 60)) / (1000 * 60));
+    const uptimeMinutes = Math.floor(
+      (stats.uptime % (1000 * 60 * 60)) / (1000 * 60)
+    );
 
-    console.log(`\n${colors.bright}${colors.green}┌─ System Statistics ────────────────────────────────────────┐${colors.reset}`);
-    console.log(`${colors.green}│${colors.reset} Active Calls:    ${colors.bright}${stats.activeCalls}${colors.reset}`);
-    console.log(`${colors.green}│${colors.reset} Total Calls:     ${colors.bright}${stats.totalCalls}${colors.reset}`);
-    console.log(`${colors.green}│${colors.reset} Completed:       ${colors.bright}${stats.completedCalls}${colors.reset}`);
-    console.log(`${colors.green}│${colors.reset} Total Tool Calls: ${colors.bright}${stats.toolCalls}${colors.reset}`);
-    console.log(`${colors.green}│${colors.reset} Uptime:          ${colors.bright}${uptimeHours}h ${uptimeMinutes}m${colors.reset}`);
-    console.log(`${colors.bright}${colors.green}└────────────────────────────────────────────────────────────┘${colors.reset}\n`);
+    console.log(
+      `\n${colors.bright}${colors.green}┌─ System Statistics ────────────────────────────────────────┐${colors.reset}`
+    );
+    console.log(
+      `${colors.green}│${colors.reset} Active Calls:    ${colors.bright}${stats.activeCalls}${colors.reset}`
+    );
+    console.log(
+      `${colors.green}│${colors.reset} Total Calls:     ${colors.bright}${stats.totalCalls}${colors.reset}`
+    );
+    console.log(
+      `${colors.green}│${colors.reset} Completed:       ${colors.bright}${stats.completedCalls}${colors.reset}`
+    );
+    console.log(
+      `${colors.green}│${colors.reset} Total Tool Calls: ${colors.bright}${stats.toolCalls}${colors.reset}`
+    );
+    console.log(
+      `${colors.green}│${colors.reset} Uptime:          ${colors.bright}${uptimeHours}h ${uptimeMinutes}m${colors.reset}`
+    );
+    console.log(
+      `${colors.bright}${colors.green}└────────────────────────────────────────────────────────────┘${colors.reset}\n`
+    );
   }
 }
 
