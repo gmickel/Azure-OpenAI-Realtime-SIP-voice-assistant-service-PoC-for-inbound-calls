@@ -1,119 +1,183 @@
-# Azure OpenAI gpt-realtime Voice Bot
+# Azure OpenAI Realtime Voice Assistant
 
-Simple Bun/Hono service that receives **`realtime.call.incoming`** webhooks from **Azure OpenAI Realtime (SIP)**, configures the voice session, handles tool calls, and can forward callers to a human via SIP **REFER**.
-👉 This project focuses on the **control plane** (call acceptance, WS control, tools, logging)—media (RTP) is handled by Azure/Twilio.
+> **Experimental phone voice assistant** powered by Azure OpenAI Realtime (SIP). Handles inbound calls, orchestrates tool calls, and provides comprehensive monitoring. Built to test latency and explore the Realtime API capabilities.
 
-I made this because I wanted to test the latency of the Realtime API when everything is deployed in the same region/resource group on Azure.
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+[![Bun](https://img.shields.io/badge/Bun-1.1+-black.svg)](https://bun.sh)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
----
-
-## At a Glance
-
-* **What it does:** Answers phone calls sent via **Twilio Elastic SIP** to **Azure OpenAI Realtime (SIP)**, then controls the conversation over a sideband **WebSocket**.
-* **Why Azure:** Keep data in-region, enterprise auth/quota, and reduce path length when deployed in Azure.
-* **Tech:** Bun + Hono, `openai` SDK, `ws`, `zod`.
-* **Tools included:**
-  `handoff_human` (SIP REFER), `lookup_order`, `check_inventory`, `schedule_callback` — all pluggable.
+> ⚠️ **Experimental Project**: This is a research/experimental project built to explore Azure OpenAI Realtime capabilities and test latency. Not intended for production use without significant additional work on security, scalability, and reliability.
 
 ---
 
-## Architecture
+## 🎯 What This Does
+
+A **Bun/Hono service** that receives `realtime.call.incoming` webhooks from **Azure OpenAI Realtime (SIP)**, configures voice sessions, handles tool calls, and can forward callers to human agents via SIP **REFER**. This project focuses on the **control plane** (call acceptance, WebSocket orchestration, tools, logging)—media (RTP) is handled entirely by Azure/Twilio.
+
+**Built to explore:**
+- 🎤 **Voice-enabled interactions** with Azure OpenAI Realtime
+- 📞 **Phone-based AI assistants** with tool integration
+- 🔄 **Hybrid AI/human** call routing via SIP REFER
+- 📊 **Real-time call monitoring** and analytics
+- 🚀 **Low-latency voice interactions** (tested when deployed in the same Azure region)
+
+---
+
+## 📊 Real-Time Dashboard
+
+**Monitor your voice assistant in real-time** with a beautiful, auto-refreshing dashboard:
+
+![Voice Control Monitor Dashboard](./img/dashboard.png)
+
+**Access:** `http://localhost:8000/dashboard`
+
+The dashboard provides:
+- 📈 **Live statistics** — Active calls, total sessions, tool usage, average duration
+- 🔴 **Active calls** — Real-time view of ongoing conversations with caller phone numbers, duration, tools used, and message counts
+- 📜 **Recent activity** — Complete call history with caller information, sentiment analysis and transcripts
+- 📊 **Tool analytics** — Visual charts showing which tools are most frequently used
+- ⚡ **Live updates** — Server-Sent Events (SSE) for real-time, non-intrusive updates without page refreshes
+
+Perfect for demos, monitoring, and understanding your voice assistant's performance at a glance.
+
+---
+
+## ✨ Key Features
+
+### 🎙️ Voice Assistant Capabilities
+- **Natural conversations** powered by Azure OpenAI Realtime
+- **9 built-in tools** ready to use (order lookup, inventory, weather, store locator, and more)
+- **Barge-in support** — Users can interrupt naturally
+- **SIP REFER** — Seamless handoff to human agents
+- **Multi-language ready** — Easy prompt customization
+
+### 📊 Monitoring & Analytics
+- **Real-time dashboard** with beautiful UI
+- **Comprehensive analytics** — Call duration, tool usage, sentiment analysis
+- **Admin API** — RESTful endpoints for integrations
+- **Enhanced logging** — Color-coded console output with call summaries
+- **Transcript viewer** — Full conversation history per call
+
+### 🛠️ Developer Experience
+- **TypeScript** with full type safety
+- **Zod validation** for all tool arguments
+- **Hot reload** development mode
+- **PII redaction** in logs
+- **Extensible architecture** — Easy to add new tools
+
+---
+
+## 🏗️ Architecture
 
 ```
 PSTN ↔ Twilio Elastic SIP Trunk → Azure OpenAI Realtime (SIP)
                                  ↘ (Webhook: realtime.call.incoming)
-                                   Your Bun/Hono server
+                                   Your Bun/Hono Server
                                       ├─ POST /accept      (REST)
                                       ├─ wss /v1/realtime?call_id=... (control)
                                       ├─ tools (function calls)
+                                      ├─ /dashboard        (monitoring)
+                                      ├─ /api/*            (admin API)
                                       └─ POST /refer       (REST, on handoff)
 ```
 
-**Flow**
-
-1. Inbound call hits the **Azure Realtime SIP connector** you configured for your Azure OpenAI resource.
-2. Azure posts **`realtime.call.incoming`** to your server’s webhook.
-3. Your server **accepts** the call (REST), then attaches to the call control **WebSocket**.
-4. The bot greets, listens, calls tools, and can **REFER** to a human queue.
-
----
-
-## Prerequisites
-
-* **Azure subscription** with an **Azure OpenAI** resource in a supported region (e.g. Sweden Central).
-* A **model deployment** named e.g. `gpt-realtime`. (Azure AI Foundry → *Deployments* → *Deploy model* → `gpt-realtime`.)
-* **API key** for that Azure OpenAI resource.
-* A **public URL** for your webhook (local: use `ngrok` or Cloudflare Tunnel).
-* (Optional) **Twilio** account for Elastic SIP Trunking and a phone number.
+**Call Flow:**
+1. Inbound call hits the **Azure Realtime SIP connector** configured for your Azure OpenAI resource
+2. Azure posts **`realtime.call.incoming`** webhook to your server
+3. Your server **accepts** the call (REST), then attaches to the call control **WebSocket**
+4. The bot greets, listens, calls tools, and can **REFER** to a human queue
+5. All activity is tracked in real-time on the dashboard
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1) Clone & install
+### Prerequisites
+
+- **Azure subscription** with an **Azure OpenAI** resource in a supported region (e.g., Sweden Central)
+- A **model deployment** named `gpt-realtime` (Azure AI Foundry → Deployments)
+- **API key** for your Azure OpenAI resource
+- **Public URL** for webhook (local: use `ngrok` or Cloudflare Tunnel)
+- (Optional) **Twilio** account for Elastic SIP Trunking
+
+### Installation
 
 ```bash
+# Clone the repository
 git clone <your-repo>
 cd <your-repo>
+
+# Install dependencies
 bun install
+
+# Copy environment template
 cp env.template .env
 ```
 
-### 2) Fill `.env`
+### Configuration
 
-For **Azure**:
+Edit `.env` with your Azure OpenAI credentials:
 
 ```env
+# Azure OpenAI Configuration
 OPENAI_API_KEY=YOUR_AZURE_OPENAI_KEY
-OPENAI_WEBHOOK_SECRET= # set after creating the webhook endpoint (see below)
+OPENAI_WEBHOOK_SECRET=                    # Set after creating webhook endpoint
 REALTIME_MODEL=gpt-realtime
-REALTIME_VOICE=marin        # any voice supported by the Realtime stack
-SIP_TARGET_URI=             # e.g. tel:+1AAA BBB CCCC (optional, for REFER)
+REALTIME_VOICE=marin                     # Any supported voice (marin, alloy, etc.)
+SIP_TARGET_URI=                          # Optional: tel:+1AAA BBB CCCC (for REFER)
 PORT=8000
 
-# Azure endpoints (use your own resource subdomain + path)
+# Azure Endpoints (replace with your resource subdomain)
 OPENAI_BASE=https://<your-resource>.openai.azure.com/openai
 REALTIME_WS_BASE=wss://<your-resource>.openai.azure.com/openai/v1/realtime
 
-# Leave empty or unset for Azure Realtime:
+# Leave empty for Azure Realtime (don't add api-version)
 REALTIME_API_VERSION=
+
+# Logging (optional)
+LOG_FORMAT=pretty                        # 'pretty' for color-coded logs, 'json' for structured
+DEBUG_LOGGING=0                          # Set to '1' to enable verbose event logging
 ```
 
-> **Important (Azure):** Do **not** append `api-version` to Realtime WS/REST in this project. The Azure Realtime SIP control plane accepts `/v1/...` without it.
+> **Important:** Do **not** append `api-version` to Realtime WS/REST URLs. The Azure Realtime SIP control plane accepts `/v1/...` without it.
 
-### 3) Start the server
+### Start the Server
 
 ```bash
+# Development mode (hot reload)
 bun run dev
-# or
+
+# Production mode
 bun run start
 ```
 
-Server prints:
-
+The server will print:
 ```
 Server listening on http://localhost:8000/
+Dashboard available at: /dashboard
 ```
 
-Health checks:
+**Health checks:**
+- `GET /healthz` → `{ ok: true }`
+- `GET /` → Service info
 
-* `GET /healthz` → `{ ok: true }`
-* `GET /` → service info
-
-### 4) Expose your webhook (local)
+### Expose Your Webhook (Local Development)
 
 ```bash
+# Using ngrok
 npx ngrok http 8000
-# note the https://<subdomain>.ngrok-free.app URL
+
+# Note the https://<subdomain>.ngrok-free.app URL
+# You'll use this in the next step
 ```
 
 ---
 
-## Wire Up Azure OpenAI Realtime (SIP)
+## 🔌 Azure OpenAI Realtime (SIP) Setup
 
-### A) Create the webhook endpoint in Azure
+### Step 1: Create Webhook Endpoint
 
-Use your resource host (replace placeholders), and the **public webhook URL** from ngrok/your domain:
+Create a webhook endpoint in Azure that points to your public server URL:
 
 ```bash
 curl -sS -X POST "https://<your-resource>.openai.azure.com/openai/v1/dashboard/webhook_endpoints" \
@@ -126,213 +190,398 @@ curl -sS -X POST "https://<your-resource>.openai.azure.com/openai/v1/dashboard/w
   }'
 ```
 
-After creating, Azure shows a **Webhook Signing Secret**. Put that into `.env` as:
-
-```
-OPENAI_WEBHOOK_SECRET=...
-```
-
-### B) Deploy the `gpt-realtime` model (if not done)
-
-In **Azure AI Foundry → Deployments**, deploy `gpt-realtime` (Global Standard).
-Your `.env` should use `REALTIME_MODEL=gpt-realtime` (deployment name, not model family).
-
----
-
-## Twilio Elastic SIP Trunking
-
-> Twilio routes PSTN calls to Azure’s SIP connector. You’ll point your SIP trunk at the SIP URI Azure provides for your resource/project.
-
-**Good step-by-step from Twilio:**
-
-* *OpenAI Realtime API + Elastic SIP Trunking*
-  [https://www.twilio.com/en-us/blog/developers/tutorials/product/openai-realtime-api-elastic-sip-trunking](https://www.twilio.com/en-us/blog/developers/tutorials/product/openai-realtime-api-elastic-sip-trunking)
-
-**High-level steps**
-
-1. In Twilio, create an **Elastic SIP Trunk**, add an **Origination URI** that points to the **Azure OpenAI SIP connector URI** for your resource/project.
-2. Assign a **Twilio phone number** to the trunk.
-3. Call that number. Twilio sends the call to Azure Realtime SIP, which triggers our webhook.
-
-> The SIP connector URI appears in Azure’s Realtime docs/portal for your resource. It looks like `sip:proj_...@sip.api.openai.azure.com` (format varies). You give this to Twilio as the target for the trunk.
-
----
-
-### Use OpenAI’s Native Realtime API (no Azure)
-
-Prefer the stock OpenAI cloud instead of Azure? The same Bun service works there too—just point your SIP trunk at `sip.api.openai.com`, create the webhook in the OpenAI console, and swap the base URLs in `.env`.
-
-**1. Configure OpenAI webhooks + SIP in the console**
-
-1. Navigate to [https://platform.openai.com/settings/](https://platform.openai.com/settings/) while signed into the right project.
-2. In **Settings → Webhooks**, click **Create webhook**:
-   * Name it, set the URL to `https://<your-public-host>/openai/webhook`, and select the `realtime.call.incoming` event.
-   * Copy the **Webhook secret** and store it as `OPENAI_WEBHOOK_SECRET`.
-3. Open **Live → SIP Connect** (same project) and create a SIP connection:
-   * Use the provided URI format `sip:<project-id>@sip.api.openai.com;transport=tls` (Twilio’s guide specifies the `project-id` from Settings → General).
-   * Configure your Twilio/Bandwidth trunk Origination target to that exact URI so inbound calls hit OpenAI’s SIP connector.
-
-**2. Update `.env` for the public OpenAI endpoints**
+After creating, Azure will show a **Webhook Signing Secret**. Add it to your `.env`:
 
 ```env
-# Direct OpenAI cloud
+OPENAI_WEBHOOK_SECRET=your_secret_here
+```
+
+### Step 2: Deploy the Model
+
+In **Azure AI Foundry → Deployments**, deploy `gpt-realtime` (Global Standard). Ensure your `.env` uses `REALTIME_MODEL=gpt-realtime` (deployment name, not model family).
+
+---
+
+## 📞 Twilio Elastic SIP Trunking
+
+Twilio routes PSTN calls to Azure's SIP connector. Point your SIP trunk at the SIP URI Azure provides for your resource/project.
+
+**Step-by-step guide:**
+- [Twilio: OpenAI Realtime API + Elastic SIP Trunking](https://www.twilio.com/en-us/blog/developers/tutorials/product/openai-realtime-api-elastic-sip-trunking)
+
+**Quick steps:**
+1. In Twilio, create an **Elastic SIP Trunk**
+2. Add an **Origination URI** pointing to your **Azure OpenAI SIP connector URI** (looks like `sip:proj_...@sip.api.openai.azure.com`)
+3. Assign a **Twilio phone number** to the trunk
+4. Call that number → Twilio routes to Azure → Azure triggers your webhook
+
+---
+
+## 🌐 Using OpenAI's Native Realtime API (No Azure)
+
+Prefer the stock OpenAI cloud? The same service works there too—just swap the endpoints in `.env`.
+
+**1. Configure OpenAI webhooks + SIP:**
+- Navigate to [OpenAI Platform Settings](https://platform.openai.com/settings/)
+- Create webhook: `https://<your-public-host>/openai/webhook`
+- Create SIP connection: `sip:<project-id>@sip.api.openai.com;transport=tls`
+- Copy webhook secret to `.env`
+
+**2. Update `.env`:**
+```env
 OPENAI_BASE=https://api.openai.com
 REALTIME_WS_BASE=wss://api.openai.com/v1/realtime
 REALTIME_API_VERSION=
 ```
 
-Keep using your standard `OPENAI_API_KEY`, `REALTIME_MODEL`, `REALTIME_VOICE`, etc. The server automatically switches between Azure-style `api-key` headers and OpenAI’s `Authorization: Bearer` based on the hostname.
-
-**3. Deploy & test**
-
-1. Restart `bun run dev` so the new env vars load.
-2. Call your number → your carrier routes to `sip:<project-id>@sip.api.openai.com;transport=tls` → OpenAI posts the webhook to you.
-3. Watch the logs—you should see the exact same greeting/tool flow, just without Azure in the middle.
-
-> Tip: The OpenAI console pings the webhook URL before saving. Keep ngrok/Cloudflare Tunnel running so validation succeeds (Twilio’s tutorial highlights using a static ngrok domain for this).
-
----
-
-## What You Should See
-
-1. Phone call → Twilio → Azure → **your server** logs:
-
-   * `{"scope":"webhook","eventType":"realtime.call.incoming", ...}`
-   * `{"scope":"call","status":"accepted"}`
-   * `{"scope":"call","status":"ws_opened"}`
-2. The bot greets and responds to you.
-3. If you say “transfer me to a person”, the `handoff_human` tool issues a **REFER** to `SIP_TARGET_URI`.
-
----
-
-## Configuration Reference
-
-| Variable                | Required  | Notes                                                                                          |
-| ----------------------- | --------- | ---------------------------------------------------------------------------------------------- |
-| `OPENAI_API_KEY`        | ✅         | Azure OpenAI **resource** API key.                                                             |
-| `OPENAI_WEBHOOK_SECRET` | ✅         | The **signing secret** you get when creating the webhook endpoint (used to verify signatures). |
-| `REALTIME_MODEL`        | ✅         | Azure deployment name (e.g. `gpt-realtime`).                                                   |
-| `REALTIME_VOICE`        | ✅         | Voice name supported by Realtime (e.g., `marin`, `alloy`, etc.).                               |
-| `SIP_TARGET_URI`        | ➖         | Destination for REFER (e.g., `tel:+1XXXXXXXXXX` or `sip:queue@pbx.example.com`).               |
-| `PORT`                  | ➖         | Defaults to `8000`.                                                                            |
-| `OPENAI_BASE`           | ✅ (Azure) | `https://<resource>.openai.azure.com/openai`                                                   |
-| `REALTIME_WS_BASE`      | ✅ (Azure) | `wss://<resource>.openai.azure.com/openai/v1/realtime`                                         |
-| `REALTIME_API_VERSION`  | ✖         | Leave empty for this project’s Realtime calls.                                                 |
-| `TEST_MODE`             | ➖         | `1` disables signature verification for local smoke tests only.                                |
-
----
-
-## Commands
-
+**3. Restart and test:**
 ```bash
-bun run dev                  # hot reload
-bun run start                # prod-style start
-bun test                     # unit tests (PII redaction)
-bun run scripts/smoke-sip-webhook.ts   # offline webhook smoke (no Azure/Twilio)
+bun run dev
+# Call your number → OpenAI posts webhook → same flow!
 ```
 
-> The `smoke-realtime-ws.ts` targets api.openai.com and is meant to validate account-level realtime, not Azure SIP. For full Azure SIP verification, place a real call or use the webhook smoke with TEST_MODE.
+---
+
+## 🎉 Demo Features
+
+This project includes extensive demo and monitoring capabilities perfect for showcasing your voice assistant.
+
+### 📊 Real-Time Dashboard
+
+Visit `http://localhost:8000/dashboard` to see:
+
+- **Live Statistics**
+  - Active calls counter with pulse animation
+  - Total calls handled (all-time)
+  - Completed calls
+  - Total tool executions
+  - Average call duration
+  - System uptime
+
+- **Active Calls Section**
+  - Real-time view of ongoing conversations
+  - Caller phone number (extracted from SIP headers)
+  - Call duration counter
+  - Tools used per call
+  - Message count
+  - Status indicators
+
+- **Recent Activity**
+  - Last 5 calls with complete details
+  - Call status (active, completed, failed, transferred)
+  - Duration, tool usage, transcripts
+  - Color-coded by status
+  - "View Transcript" button for each call
+
+- **Tool Usage Analytics**
+  - Visual bar charts showing tool popularity
+  - Percentage breakdown of tool calls
+  - Real-time updates
+
+**Demo Tip:** Keep the dashboard open on a second screen during demos to wow your audience!
+
+### 🔧 Built-in Tools (9 Total)
+
+1. **`handoff_human`** — Transfer to live agent (SIP REFER)
+2. **`lookup_order`** — Check order status by order number
+3. **`check_inventory`** — Product availability lookup
+4. **`schedule_callback`** — Book a callback appointment
+5. **`get_weather`** — Get weather for any location
+6. **`check_company_hours`** — Business hours lookup
+7. **`search_products`** — Product catalog search
+8. **`find_store_location`** — Nearest store finder
+
+All tools include:
+- **Zod validation** for type-safe arguments
+- **Error handling** with graceful fallbacks
+- **Follow-up instructions** for natural conversation flow
+
+### 🎨 Enhanced Console Logging
+
+Beautiful color-coded logs (enable with `LOG_FORMAT=pretty`):
+
+- 📞 **CALL** (Cyan) — Call lifecycle events
+- 🔧 **TOOL** (Magenta) — Tool executions with status
+- 💬 **TRANSCRIPT** (White) — User/assistant conversations
+- ✓ **SUCCESS** (Green) — Successful operations
+- ⚠ **WARNING** (Yellow) — Important notices
+- ✗ **ERROR** (Red) — Problems and failures
+- ℹ **INFO** (Blue) — General information
+
+**Special features:**
+- Timestamps with millisecond precision
+- Call ID tags for easy tracking
+- Beautiful boxed call summaries
+- Periodic system statistics display
+- Startup banner
+
+### 📈 Analytics & Metrics Engine
+
+Comprehensive tracking of every aspect:
+
+**Call Metrics:**
+- Caller identification (phone number from SIP headers)
+- Start/end times and duration
+- Tool calls with execution timing
+- Full conversation transcripts
+- User sentiment analysis (positive/neutral/negative)
+- Barge-in events (user interruptions)
+- Response counts
+
+**System Statistics:**
+- Total/active/completed calls
+- Failed and transferred calls
+- Average call duration
+- Tool usage patterns
+- System uptime
+
+### 🔌 Admin API Endpoints
+
+RESTful API for integrations and monitoring:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/stats` | System-wide statistics |
+| `GET /api/calls` | Recent calls (use `?limit=N` to customize) |
+| `GET /api/calls/active` | Currently active calls |
+| `GET /api/calls/:callId` | Detailed metrics for a specific call |
+| `GET /api/calls/:callId/transcript` | Full conversation transcript |
+
+**Example:**
+```bash
+# Get system stats
+curl http://localhost:8000/api/stats | jq
+
+# Get recent calls
+curl http://localhost:8000/api/calls?limit=20 | jq
+
+# Get specific call details
+curl http://localhost:8000/api/calls/CALL_RTC_9E31 | jq
+```
+
+**See [DEMO_FEATURES.md](./DEMO_FEATURES.md) for complete documentation and demo script suggestions.**
 
 ---
 
-## How It Works (Deeper Dive)
+## 📋 Configuration Reference
 
-1. **Webhook verify**: `POST /openai/webhook` validates the request (or bypasses with `TEST_MODE=1`).
-2. **Accept**: On `realtime.call.incoming`, the server posts **`/v1/realtime/calls/{call_id}/accept`** with your model, voice, and tool schemas.
-3. **Sideband WS**: It then connects to **`wss://.../v1/realtime?call_id=...`** using the **`api-key`** header (Azure) and sends a **`session.update`** to set voice/instructions.
-4. **Turn-taking**: The server listens for speech start/stop and transcription events to request concise turn responses.
-5. **Tools**: Function-call items stream in; arguments are collected, validated by `zod`, and executed (`handoff_human`, `lookup_order`, `check_inventory`, `schedule_callback`).
-6. **REFER**: `handoff_human` triggers a **`/refer`** to `SIP_TARGET_URI`.
-7. **Observability**: Structured logs (`scope=webhook|call|tool|transcript`) with basic PII redaction.
-
----
-
-## Extending the Bot
-
-* **Add a tool**: Implement a `ToolDefinition` in `src/tools.ts` with a `zod` schema and a handler. It will automatically appear in `realtimeToolSchemas`.
-* **Improve prompts**: Edit `src/prompts.ts` (`systemPrompt`, `greetingPrompt`). Keep them short and intentional—Realtime responds quickly to concise instructions.
-* **Data connectors**: In a real system, your tool handlers would query internal APIs/DBs and return a summarized payload for the bot to explain in German.
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | ✅ | Azure OpenAI **resource** API key |
+| `OPENAI_WEBHOOK_SECRET` | ✅ | Webhook signing secret from Azure/OpenAI |
+| `REALTIME_MODEL` | ✅ | Azure deployment name (e.g., `gpt-realtime`) |
+| `REALTIME_VOICE` | ✅ | Voice name (e.g., `marin`, `alloy`) |
+| `SIP_TARGET_URI` | ➖ | Destination for REFER (e.g., `tel:+1XXXXXXXXXX`) |
+| `PORT` | ➖ | Server port (defaults to `8000`) |
+| `OPENAI_BASE` | ✅ (Azure) | `https://<resource>.openai.azure.com/openai` |
+| `REALTIME_WS_BASE` | ✅ (Azure) | `wss://<resource>.openai.azure.com/openai/v1/realtime` |
+| `REALTIME_API_VERSION` | ✖ | Leave empty for Azure Realtime |
+| `TEST_MODE` | ➖ | `1` disables signature verification (local tests only) |
+| `LOG_FORMAT` | ➖ | `pretty` (default) or `json` for structured logs |
 
 ---
 
-## Deploying the Node Server to Azure (Low Latency)
+## 🛠️ Commands
 
-Running your control plane **in the same Azure region** as your Azure OpenAI resource minimizes WS round‑trips and avoids public‑internet hairpins.
+```bash
+# Development (hot reload)
+bun run dev
 
-**Options**
+# Production
+bun run start
 
-* **Azure Container Apps** or **Azure App Service**: containerize or run Bun directly.
-* **Azure VM / Scale Set**: for maximum control and custom networking.
-* **Azure Functions** (HTTP + WS not ideal here): you still need a long‑lived WS client; prefer a process‑based host.
+# Run tests
+bun test
 
-**What changes if you deploy the server in Azure?**
+# Smoke test webhook (offline, no Azure/Twilio)
+TEST_MODE=1 bun run scripts/smoke-sip-webhook.ts
+```
 
-* You’ll use an **Azure‑hosted** HTTPS domain for the webhook instead of ngrok.
-* Re‑create the webhook endpoint (or update it) with your new public URL:
-
-  ```bash
-  curl -sS -X POST "https://<your-resource>.openai.azure.com/openai/v1/dashboard/webhook_endpoints" \
-    -H "Content-Type: application/json" \
-    -H "api-key: <YOUR_AZURE_OPENAI_KEY>" \
-    -d '{
-      "name": "realtime-incoming",
-      "url": "https://<your-azure-host>/openai/webhook",
-      "event_types": ["realtime.call.incoming"]
-    }'
-  ```
-* Twilio stays the same (it still points at Azure’s SIP connector).
-* Keep the **same** `OPENAI_BASE` and `REALTIME_WS_BASE` values; they target your Azure OpenAI resource.
-
-**Networking tips**
-
-* Ensure your app can reach `https://<resource>.openai.azure.com/openai` and `wss://.../v1/realtime`.
-* If you later enable **Private Endpoints** on the Azure OpenAI resource, put the app inside the same VNet/subnet and update DNS accordingly.
+> **Note:** `smoke-realtime-ws.ts` targets `api.openai.com` and validates account-level realtime, not Azure SIP. For full Azure SIP verification, place a real call or use the webhook smoke with `TEST_MODE=1`.
 
 ---
 
-## Troubleshooting
+## 🔍 How It Works (Deep Dive)
 
-**WS error “Expected 101 status code”**
+1. **Webhook Verification**: `POST /openai/webhook` validates the request signature (or bypasses with `TEST_MODE=1`)
 
-* In this project, **don’t** add `api-version` to the WS URL.
-* Confirm `REALTIME_WS_BASE` is `wss://<resource>.openai.azure.com/openai/v1/realtime`.
-* Azure requires the **`api-key`** header (not `Authorization: Bearer`). This server sets it automatically when `OPENAI_BASE` is Azure.
+2. **Call Acceptance**: On `realtime.call.incoming`, the server POSTs `/v1/realtime/calls/{call_id}/accept` with your model, tools, and instructions
 
-**No greeting / wrong voice**
+3. **WebSocket Connection**: Connects to `wss://.../v1/realtime?call_id=...` using `api-key` header (Azure) and sends `session.update` to configure voice/instructions
 
-* The server sends `session.update` and then applies voice on `session.updated`. If Azure returns `unknown_parameter` for `audio.output.voice`, the server retries with `voice` (compat shim).
+4. **Turn-Taking**: Listens for speech start/stop and transcription events to request concise turn responses
 
-**REFER does nothing**
+5. **Tool Execution**: Function-call items stream in; arguments are collected, validated with `zod`, and executed (handoff_human, lookup_order, check_inventory, etc.)
 
-* Set a real `SIP_TARGET_URI` (E.164 for PSTN, or `sip:...@...` for PBX).
-* Your carrier/PBX must accept REFER to that target.
+6. **Human Handoff**: `handoff_human` tool triggers a `/refer` to `SIP_TARGET_URI`
 
----
-
-## Security & Compliance
-
-* Keep `.env` out of version control (already ignored).
-* Store secrets in **Azure Key Vault** or your secret manager.
-* Logs redact naive phone numbers/emails; add a SIEM/SOC sink (Datadog, etc.) before production.
-* For PHI/PII, ensure data residency and DSR procedures align with your policies.
+7. **Observability**: Structured logs with PII redaction, real-time dashboard updates, and comprehensive analytics
 
 ---
 
-## License
+## 🔧 Extending the Bot
+
+### Adding a New Tool
+
+Implement a `ToolDefinition` in `src/tools.ts`:
+
+```typescript
+{
+  name: 'my_new_tool',
+  description: 'What this tool does',
+  schema: z.object({
+    param: z.string().describe('Parameter description'),
+  }),
+  jsonSchema: { /* OpenAI function schema */ },
+  handler: async (args, ctx) => {
+    // Your logic here
+    return {
+      output: { result: 'success' },
+      followUpInstructions: 'Tell the user about the result',
+    };
+  },
+}
+```
+
+The tool automatically appears in `realtimeToolSchemas` and is available to the assistant.
+
+### Customizing Prompts
+
+Edit `src/prompts.ts` (`systemPrompt`, `greetingPrompt`). Keep prompts concise—Realtime responds quickly to short, intentional instructions.
+
+### Connecting Real Data
+
+For real-world use, your tool handlers would query internal APIs/databases and return summarized payloads for the bot to explain naturally. Currently, the included tools use demo/mock data.
+
+---
+
+## ☁️ Deploying to Azure (Low Latency)
+
+Running your control plane **in the same Azure region** as your Azure OpenAI resource minimizes WebSocket round-trips and avoids public-internet hairpins.
+
+**Deployment Options:**
+- **Azure Container Apps** or **Azure App Service** — Containerize or run Bun directly
+- **Azure VM / Scale Set** — Maximum control and custom networking
+- **Azure Functions** — Not ideal (HTTP + WS requires long-lived connections; prefer process-based hosts)
+
+**After Deployment:**
+
+1. Update webhook endpoint with your Azure-hosted HTTPS domain:
+   ```bash
+   curl -sS -X POST "https://<your-resource>.openai.azure.com/openai/v1/dashboard/webhook_endpoints" \
+     -H "Content-Type: application/json" \
+     -H "api-key: <YOUR_AZURE_OPENAI_KEY>" \
+     -d '{
+       "name": "realtime-incoming",
+       "url": "https://<your-azure-host>/openai/webhook",
+       "event_types": ["realtime.call.incoming"]
+     }'
+   ```
+
+2. Twilio stays the same (still points at Azure's SIP connector)
+
+3. Keep the same `OPENAI_BASE` and `REALTIME_WS_BASE` values
+
+**Networking Tips:**
+- Ensure your app can reach `https://<resource>.openai.azure.com/openai` and `wss://.../v1/realtime`
+- If using **Private Endpoints**, put the app in the same VNet/subnet and update DNS
+
+---
+
+## 🐛 Troubleshooting
+
+### WebSocket Error: "Expected 101 status code"
+
+- **Don't** add `api-version` to the WebSocket URL
+- Confirm `REALTIME_WS_BASE` is `wss://<resource>.openai.azure.com/openai/v1/realtime`
+- Azure requires the `api-key` header (not `Authorization: Bearer`). The server sets this automatically when `OPENAI_BASE` is Azure.
+
+### No Greeting / Wrong Voice
+
+- The server sends `session.update` and applies voice on `session.updated`
+- If Azure returns `unknown_parameter` for `audio.output.voice`, the server retries with `voice` (compatibility shim)
+
+### REFER Does Nothing
+
+- Set a real `SIP_TARGET_URI` (E.164 for PSTN, or `sip:...@...` for PBX)
+- Your carrier/PBX must accept REFER to that target
+
+### Dashboard Not Updating
+
+- Check browser console for SSE connection errors
+- Verify `/api/events` endpoint is accessible
+- Ensure `/api/stats` endpoint returns data
+- Check network tab for EventSource connection status
+
+### User Transcription Not Appearing
+
+**Known Limitation:** Azure OpenAI Realtime (SIP) does **not** currently support user input transcription.
+
+- **Assistant transcription**: ✅ Works (visible in dashboard and logs)
+- **User transcription**: ❌ Not supported by Azure's SIP implementation
+- **Speech detection**: ✅ Works (VAD detects speech, tools execute based on user input)
+
+**Why this happens:**
+- Azure rejects `input_audio_transcription` config in both `/accept` payload and `session.update` messages
+- The API understands user speech and processes it correctly, but doesn't provide transcript events
+- This appears to be a deliberate API limitation, not a configuration issue
+
+**Workarounds:**
+- Accept this limitation and track only assistant responses + tool calls
+- Use Twilio Media Streams fork with external STT (Whisper/Deepgram)
+- Wait for Azure to add this feature to their SIP implementation
+
+**Debug:** Enable `DEBUG_LOGGING=1` to see all events and confirm no `conversation.item.input_audio_transcription.completed` events arrive.
+
+---
+
+## 🔒 Security & Compliance
+
+**Note:** This is an experimental project. For production use, consider:
+
+- **Secrets Management**: Keep `.env` out of version control (already ignored). Store secrets in **Azure Key Vault** or your secret manager
+- **PII Redaction**: Logs automatically redact phone numbers and emails. Add a SIEM/SOC sink (Datadog, etc.) for production deployments
+- **Data Residency**: For PHI/PII, ensure data residency and DSR procedures align with your policies
+- **Signature Verification**: Webhook signatures are verified by default (disable only with `TEST_MODE=1` for local testing)
+
+---
+
+## 📚 What You Should See
+
+When you place a call:
+
+1. **Server logs** show:
+   ```
+   📞 CALL [CALL_RTC] Webhook received: realtime.call.incoming
+   📞 CALL [CALL_RTC] Call accepted
+   📞 CALL [CALL_RTC] WebSocket opened
+   💬 TRANSCRIPT [CALL_RTC] ASSISTANT: Hello! How can I help you today?
+   ```
+
+2. **Dashboard** updates in real-time with call metrics
+
+3. **Bot responds** naturally to your voice
+
+4. **Tools execute** when requested (e.g., "check order ACME-12345")
+
+5. **Handoff works** if you say "transfer me to a person" (when `SIP_TARGET_URI` is set)
+
+---
+
+## 📖 References
+
+- **[Azure Realtime SIP](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/realtime-audio-sip)** — Microsoft Learn: "Use the GPT Realtime API via SIP"
+- **[Realtime Conversations & Tools](https://platform.openai.com/docs/guides/realtime)** — OpenAI Platform Documentation
+- **[Azure Realtime Audio Reference](https://learn.microsoft.com/en-us/azure/ai-services/openai/realtime-audio-reference)** — Complete API reference
+- **[Twilio Elastic SIP Trunking + OpenAI Realtime](https://www.twilio.com/en-us/blog/developers/tutorials/product/openai-realtime-api-elastic-sip-trunking)** — Step-by-step Twilio guide
+- **[Bandwidth ↔ OpenAI Realtime SIP](https://dev.bandwidth.com/docs/voice/integrations/openai/realtime/sip/)** — Bandwidth integration guide
+
+---
+
+## 📄 License
 
 MIT
 
 ---
 
-### References
-
-* **Azure Realtime SIP** (Microsoft Learn): “Use the GPT Realtime API via SIP”
-  [https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/realtime-audio-sip](https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/realtime-audio-sip)
-* **Realtime conversations & tools** (OpenAI Platform)
-  [https://platform.openai.com/docs/guides/realtime](https://platform.openai.com/docs/guides/realtime)
-* **Azure Realtime audio reference**
-  [https://learn.microsoft.com/en-us/azure/ai-services/openai/realtime-audio-reference](https://learn.microsoft.com/en-us/azure/ai-services/openai/realtime-audio-reference)
-* **Twilio Elastic SIP Trunking + OpenAI Realtime**
-  [https://www.twilio.com/en-us/blog/developers/tutorials/product/openai-realtime-api-elastic-sip-trunking](https://www.twilio.com/en-us/blog/developers/tutorials/product/openai-realtime-api-elastic-sip-trunking)
-* **Bandwidth ↔ OpenAI Realtime SIP**
-  [https://dev.bandwidth.com/docs/voice/integrations/openai/realtime/sip/](https://dev.bandwidth.com/docs/voice/integrations/openai/realtime/sip/)
+**Built with ❤️ using Bun, Hono, and Azure OpenAI Realtime**

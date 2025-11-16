@@ -1,18 +1,18 @@
-import { config } from "./config";
+import { config } from './config';
 
 export type RealtimeSessionConfig = {
-  type: "realtime";
+  type: 'realtime';
   model: string; // must be your deployment name on Azure, e.g. gpt-realtime
   voice?: string;
   instructions?: string;
-  turn_detection?: { type: "server_vad"; interrupt_response: boolean };
+  turn_detection?: { type: 'server_vad'; interrupt_response: boolean };
   input_audio_transcription?: { model: string };
   tools: Record<string, unknown>[];
-  tool_choice?: "auto" | "required" | "none";
+  tool_choice?: 'auto' | 'required' | 'none';
 };
 
 function isAzure() {
-  return config.openaiBaseUrl.includes(".openai.azure.com");
+  return config.openaiBaseUrl.includes('.openai.azure.com');
 }
 
 const TRAILING_SLASH_REGEX = /\/$/;
@@ -22,14 +22,14 @@ function addApiVersion(url: string) {
     return url;
   }
   const u = new URL(url);
-  if (!u.searchParams.has("api-version")) {
-    u.searchParams.set("api-version", config.apiVersion);
+  if (!u.searchParams.has('api-version')) {
+    u.searchParams.set('api-version', config.apiVersion);
   }
   return u.toString();
 }
 
 function realtimeBase(): string {
-  return config.openaiBaseUrl.replace(TRAILING_SLASH_REGEX, "");
+  return config.openaiBaseUrl.replace(TRAILING_SLASH_REGEX, '');
 }
 
 function acceptUrl(callId: string): string {
@@ -54,22 +54,24 @@ async function postAbs(
   headers?: Record<string, string>
 ) {
   const common: Record<string, string> = {
-    "content-type": "application/json",
+    'content-type': 'application/json',
     ...(headers || {}),
   };
   if (isAzure()) {
-    common["api-key"] = config.apiKey;
+    common['api-key'] = config.apiKey;
   } else {
     common.authorization = `Bearer ${config.apiKey}`;
   }
 
+  console.log('🔗 API Request:', { url, apiVersion: config.apiVersion });
+
   const res = await fetch(url, {
-    method: "POST",
+    method: 'POST',
     headers: common,
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
+    const detail = await res.text().catch(() => '');
     throw new Error(`OpenAI request failed (${res.status}): ${detail}`);
   }
 }
@@ -78,7 +80,7 @@ export async function acceptCall(
   callId: string,
   session: RealtimeSessionConfig
 ): Promise<void> {
-  const body = { ...session, model: config.model, type: "realtime" };
+  const body = { ...session, model: config.model, type: 'realtime' };
   await postAbs(acceptUrl(callId), body);
 }
 

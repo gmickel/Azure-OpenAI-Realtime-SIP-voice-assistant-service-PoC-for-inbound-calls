@@ -1,5 +1,5 @@
 {
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.defaultFormatter": null,
   "[javascript]": {
     "editor.defaultFormatter": "biomejs.biome"
   },
