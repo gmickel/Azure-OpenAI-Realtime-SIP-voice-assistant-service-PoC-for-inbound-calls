@@ -772,10 +772,12 @@ function attachSidebandWebSocket(callId: string): void {
   ws.on("open", () => {
     logCallLifecycle(callId, "ws_opened");
 
-    // Configure session + voice (modern field). If Azure complains, we fallback in handleRealtimeError.
+    // Configure session + voice + transcription
+    // IMPORTANT: input_audio_transcription MUST be set here, not in accept body (per Azure docs)
     sendSessionUpdate(session, {
       type: "realtime",
       audio: { output: { voice: config.voice } },
+      input_audio_transcription: { model: "whisper-1" },
     });
 
     if (!session.greeted) {
@@ -978,6 +980,30 @@ function logInputTranscript(
   }
 }
 
+function extractTextFromPart(part: Record<string, unknown>): string {
+  const partType = getString(part.type);
+  if (partType === "text") {
+    return getString(part.text) || "";
+  }
+  if (partType === "audio") {
+    return getString(part.transcript) || "";
+  }
+  return "";
+}
+
+function extractMessageText(item: Record<string, unknown>): string {
+  const content = Array.isArray(item.content) ? item.content : [];
+  let messageText = "";
+
+  for (const part of content) {
+    if (isRecord(part)) {
+      messageText += extractTextFromPart(part);
+    }
+  }
+
+  return messageText.trim();
+}
+
 function handleConversationItem(
   session: CallSession,
   event: Record<string, unknown>
@@ -986,7 +1012,24 @@ function handleConversationItem(
   if (!item) {
     return;
   }
+
   const role = getString(item.role);
+  const type = getString(item.type);
+
+  // Record assistant message transcripts
+  if (role === "assistant" && type === "message") {
+    const messageText = extractMessageText(item);
+    if (messageText.length > 0) {
+      analytics.recordTranscript(session.callId, {
+        timestamp: Date.now(),
+        speaker: "assistant",
+        text: messageText,
+      });
+      logger.transcript(session.callId, "assistant", messageText);
+    }
+  }
+
+  // Unlock tools when user speaks
   if (role === "user" && !session.heardUser) {
     session.heardUser = true;
     session.bargeGuardUntil = 0;
