@@ -11,6 +11,7 @@ const envSchema = z.object({
   REALTIME_WS_BASE: z.string().url().optional(),
   TEST_MODE: z.enum(['0', '1']).optional(),
   REALTIME_API_VERSION: z.string().trim().optional(),
+  DEBUG_LOGGING: z.enum(['0', '1']).optional(),
 });
 
 export type RuntimeConfig = {
@@ -25,6 +26,7 @@ export type RuntimeConfig = {
   testMode: boolean;
   apiVersion?: string;
   isAzure: boolean;
+  debugLogging: boolean;
 };
 
 const defaultRealtimeWs = 'wss://api.openai.com/v1/realtime';
@@ -51,9 +53,11 @@ export function loadConfig(): RuntimeConfig {
     REALTIME_WS_BASE,
     TEST_MODE,
     REALTIME_API_VERSION,
+    DEBUG_LOGGING,
   } = parsed.data;
 
   const testMode = TEST_MODE === '1';
+  const debugLogging = DEBUG_LOGGING === '1';
 
   if (!(OPENAI_API_KEY || testMode)) {
     throw new Error('OPENAI_API_KEY is required');
@@ -77,6 +81,7 @@ export function loadConfig(): RuntimeConfig {
     testMode,
     apiVersion: REALTIME_API_VERSION,
     isAzure,
+    debugLogging,
   };
 }
 

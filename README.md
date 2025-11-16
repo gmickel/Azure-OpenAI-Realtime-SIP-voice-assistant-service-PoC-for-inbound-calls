@@ -136,6 +136,7 @@ REALTIME_API_VERSION=
 
 # Logging (optional)
 LOG_FORMAT=pretty                        # 'pretty' for color-coded logs, 'json' for structured
+DEBUG_LOGGING=0                          # Set to '1' to enable verbose event logging
 ```
 
 > **Important:** Do **not** append `api-version` to Realtime WS/REST URLs. The Azure Realtime SIP control plane accepts `/v1/...` without it.
@@ -511,6 +512,26 @@ Running your control plane **in the same Azure region** as your Azure OpenAI res
 - Verify `/api/events` endpoint is accessible
 - Ensure `/api/stats` endpoint returns data
 - Check network tab for EventSource connection status
+
+### User Transcription Not Appearing
+
+**Known Limitation:** Azure OpenAI Realtime (SIP) does **not** currently support user input transcription.
+
+- **Assistant transcription**: ✅ Works (visible in dashboard and logs)
+- **User transcription**: ❌ Not supported by Azure's SIP implementation
+- **Speech detection**: ✅ Works (VAD detects speech, tools execute based on user input)
+
+**Why this happens:**
+- Azure rejects `input_audio_transcription` config in both `/accept` payload and `session.update` messages
+- The API understands user speech and processes it correctly, but doesn't provide transcript events
+- This appears to be a deliberate API limitation, not a configuration issue
+
+**Workarounds:**
+- Accept this limitation and track only assistant responses + tool calls
+- Use Twilio Media Streams fork with external STT (Whisper/Deepgram)
+- Wait for Azure to add this feature to their SIP implementation
+
+**Debug:** Enable `DEBUG_LOGGING=1` to see all events and confirm no `conversation.item.input_audio_transcription.completed` events arrive.
 
 ---
 

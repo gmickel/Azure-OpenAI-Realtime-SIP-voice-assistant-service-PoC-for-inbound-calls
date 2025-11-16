@@ -212,16 +212,49 @@ const realtimeEventHandlers: Record<string, RealtimeEventHandler> = {
   // Standard OpenAI assistant transcript events (fallback)
   'response.audio_transcript.delta': handleAssistantTranscriptDelta,
   'response.audio_transcript.done': handleAssistantTranscriptDone,
-  'session.updated': (session) => {
+  'session.updated': (session, event) => {
     session.configured = true;
+    // Verify transcription was applied (should be set from /accept payload)
+    const sessionData = isRecord(event.session) ? event.session : undefined;
+    const transcription = sessionData
+      ? (sessionData.input_audio_transcription ?? null)
+      : null;
+    if (transcription) {
+      logger.info('User transcription armed', {
+        callId: session.callId,
+        model: isRecord(transcription)
+          ? getString(transcription.model)
+          : 'unknown',
+      });
+    } else {
+      logger.warning('User transcription NOT configured in session', {
+        callId: session.callId,
+      });
+    }
   },
   'conversation.item.added': handleConversationItem,
   'conversation.item.done': handleConversationItem,
+  'conversation.item.created': handleConversationItem, // broader compatibility
+  'conversation.item.retrieved': handleConversationItem, // broader compatibility
   'response.output_item.added': registerFunctionCall,
   'response.function_call_arguments.delta': collectToolArgs,
   'response.function_call_arguments.done': fulfillToolCall,
+  // Standard Azure user transcription events
   'conversation.item.input_audio_transcription.completed': logInputTranscript,
   'conversation.item.input_audio_transcription.failed': (session, event) => {
+    const error = isRecord(event.error) ? event.error : {};
+    logger.warning('User input transcription failed', {
+      callId: session.callId,
+      itemId: getString(event.item_id),
+      error: {
+        code: getString(error.code),
+        message: getString(error.message),
+      },
+    });
+  },
+  // Alternate spellings (seen in some Azure docs/samples)
+  'conversation.item.audio_transcription.completed': logInputTranscript,
+  'conversation.item.audio_transcription.failed': (session, event) => {
     const error = isRecord(event.error) ? event.error : {};
     logger.warning('User input transcription failed', {
       callId: session.callId,
@@ -1214,6 +1247,103 @@ app.get('/dashboard', (c) => {
         if (uptimeSublabel) {
           uptimeSublabel.textContent = Math.floor((stats.uptime % (1000 * 60 * 60)) / (1000 * 60)) + 'm';
         }
+
+        // Update active calls section
+        const activeCallsSection = document.querySelector('.section:nth-child(2) .call-grid');
+        if (activeCallsSection) {
+          if (activeCalls.length === 0) {
+            activeCallsSection.innerHTML = '<div class="empty-state">No active calls</div>';
+          } else {
+            activeCallsSection.innerHTML = activeCalls.map(call => \`
+              <div class="call-card active">
+                <div class="call-header">
+                  <span class="call-id">\${call.callId.slice(0, 8).toUpperCase()}</span>
+                  <span class="badge \${call.status}">\${call.status.toUpperCase()}</span>
+                </div>
+                <div class="call-meta">
+                  \${call.metadata.callerPhone ? \`<div class="meta-item">
+                    <span class="meta-label">📞 Caller:</span>
+                    <span class="meta-value">\${call.metadata.callerPhone}</span>
+                  </div>\` : ''}
+                  <div class="meta-item">
+                    <span class="meta-label">Duration:</span>
+                    <span class="meta-value">\${call.duration ? Math.floor((Date.now() - call.startTime) / 1000) + 's' : 'N/A'}</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Tools:</span>
+                    <span class="meta-value">\${call.toolCalls.length}</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Messages:</span>
+                    <span class="meta-value">\${call.transcripts.length}</span>
+                  </div>
+                </div>
+              </div>
+            \`).join('');
+          }
+        }
+
+        // Update recent activity section
+        const recentActivitySection = document.querySelector('.section:nth-child(3) .call-grid');
+        if (recentActivitySection) {
+          if (recentCalls.length === 0) {
+            recentActivitySection.innerHTML = '<div class="empty-state">No recent calls</div>';
+          } else {
+            recentActivitySection.innerHTML = recentCalls.map(call => \`
+              <div class="call-card">
+                <div class="call-header">
+                  <span class="call-id">\${call.callId.slice(0, 8).toUpperCase()}</span>
+                  <span class="badge \${call.status}">\${call.status.toUpperCase()}</span>
+                </div>
+                <div class="call-meta">
+                  \${call.metadata.callerPhone ? \`<div class="meta-item">
+                    <span class="meta-label">📞 Caller:</span>
+                    <span class="meta-value">\${call.metadata.callerPhone}</span>
+                  </div>\` : ''}
+                  <div class="meta-item">
+                    <span class="meta-label">Duration:</span>
+                    <span class="meta-value">\${call.duration ? Math.floor(call.duration / 1000) + 's' : 'N/A'}</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Tools:</span>
+                    <span class="meta-value">\${call.toolCalls.map(t => t.name).join(', ') || 'none'}</span>
+                  </div>
+                  <div class="meta-item">
+                    <span class="meta-label">Messages:</span>
+                    <span class="meta-value">\${call.transcripts.length}</span>
+                  </div>
+                  \${call.sentiment ? \`<div class="meta-item">
+                    <span class="meta-label">Sentiment:</span>
+                    <span class="meta-value sentiment-\${call.sentiment}">\${call.sentiment.toUpperCase()}</span>
+                  </div>\` : ''}
+                </div>
+                \${call.transcripts.length > 0 ? \`
+                <button class="view-transcript-btn" onclick="showTranscript('\${call.callId}')">
+                  View Transcript
+                </button>
+                \` : ''}
+              </div>
+            \`).join('');
+          }
+        }
+
+        // Update tool usage stats section
+        const toolStatsSection = document.querySelector('.section:nth-child(4)');
+        if (toolStatsSection) {
+          const toolContent = Object.entries(stats.toolCallsByType || {}).length === 0
+            ? '<div class="empty-state">No tools used yet</div>'
+            : \`<div class="tool-bar">\${Object.entries(stats.toolCallsByType).map(([tool, count]) => \`
+                <div class="tool-item">
+                  <span class="tool-name">\${tool}</span>
+                  <div class="tool-bar-bg">
+                    <div class="tool-bar-fill" style="width: \${(count / stats.totalToolCalls) * 100}%"></div>
+                  </div>
+                  <span class="tool-count">\${count}</span>
+                </div>
+              \`).join('')}</div>\`;
+
+          toolStatsSection.innerHTML = \`<div class="section-header">Tool Usage Stats</div>\${toolContent}\`;
+        }
       } catch (e) {
         console.error('Failed to update dashboard:', e);
       }
@@ -1291,7 +1421,7 @@ async function handleIncomingCall(
     model: config.model,
     tools: realtimeToolSchemas,
     tool_choice: 'none',
-    instructions: systemPrompt, // keep: proven to work E2E
+    instructions: systemPrompt,
   };
 
   try {
@@ -1358,17 +1488,16 @@ function attachSidebandWebSocket(callId: string): void {
   ws.on('open', () => {
     logCallLifecycle(callId, 'ws_opened');
 
-    // Configure session + voice + transcription
-    // IMPORTANT: input_audio_transcription MUST be set here, not in accept body (per Azure docs)
-    // Try gpt-4o-transcribe first (newer, better), fallback to whisper-1 if not available
+    // CRITICAL: Enable transcription+VAD IMMEDIATELY on WS open (before audio flows)
+    // Azure SIP requires session.update (not /accept body) for transcription config
     sendSessionUpdate(session, {
       type: 'realtime',
       audio: { output: { voice: config.voice } },
       input_audio_transcription: { model: 'gpt-4o-transcribe' },
-      turn_detection: { type: 'server_vad' },
+      turn_detection: { type: 'server_vad', interrupt_response: true },
     });
 
-    logger.info('Transcription enabled with gpt-4o-transcribe', { callId });
+    logger.info('Transcription config sent immediately on WS open', { callId });
 
     if (!session.greeted) {
       maybeRespond(session, {
@@ -1432,11 +1561,10 @@ async function routeRealtimeEvent(
     return;
   }
 
-  // Log ALL event types for debugging transcription
+  // Log ALL event types for debugging transcription (when DEBUG_LOGGING=1)
   if (
-    type.includes('audio') ||
-    type.includes('speech') ||
-    type.includes('item')
+    config.debugLogging &&
+    (type.includes('audio') || type.includes('speech') || type.includes('item'))
   ) {
     logger.debug(`Event: ${type}`, {
       callId: session.callId,
@@ -1721,10 +1849,12 @@ function maybeRespond(session: CallSession, request: ResponseRequest): void {
       activeResponses: session.activeResponses.size,
       snippet,
     });
-    logger.debug(
-      `Response skipped (active): ${request.source} - ${session.activeResponses.size} active`,
-      { snippet }
-    );
+    if (config.debugLogging) {
+      logger.debug(
+        `Response skipped (active): ${request.source} - ${session.activeResponses.size} active`,
+        { snippet }
+      );
+    }
     if (request.queueIfBlocked) {
       enqueueFollowUp(session, request);
     }
@@ -1736,10 +1866,12 @@ function maybeRespond(session: CallSession, request: ResponseRequest): void {
       waitMs: session.responseGateUntil - now,
       snippet,
     });
-    logger.debug(
-      `Response skipped (gate): ${request.source} - ${session.responseGateUntil - now}ms remaining`,
-      { snippet }
-    );
+    if (config.debugLogging) {
+      logger.debug(
+        `Response skipped (gate): ${request.source} - ${session.responseGateUntil - now}ms remaining`,
+        { snippet }
+      );
+    }
     if (request.queueIfBlocked) {
       enqueueFollowUp(session, request);
     }
