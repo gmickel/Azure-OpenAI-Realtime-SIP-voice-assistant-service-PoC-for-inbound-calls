@@ -1367,7 +1367,9 @@ app.post('/openai/webhook', async (c) => {
     }
 
     // Extract caller phone number from SIP headers
-    const sipHeaders = Array.isArray(data.sip_headers) ? data.sip_headers : [];
+    const sipHeaders = Array.isArray(data?.sip_headers)
+      ? data?.sip_headers
+      : [];
     const callerPhone = extractCallerPhone(sipHeaders);
 
     logWebhook(eventType, { call_id: callId, caller: callerPhone });
