@@ -1,11 +1,11 @@
-import WebSocket from "ws";
+import WebSocket from 'ws';
 
 const API_KEY = process.env.OPENAI_API_KEY;
-const MODEL = process.env.MODEL || "gpt-realtime";
-const VOICE = process.env.VOICE || "alloy";
+const MODEL = process.env.MODEL || 'gpt-realtime';
+const VOICE = process.env.VOICE || 'alloy';
 
 if (!API_KEY) {
-  console.error("OPENAI_API_KEY missing");
+  console.error('OPENAI_API_KEY missing');
   process.exit(1);
 }
 
@@ -22,14 +22,14 @@ let triedAltVoiceField = false;
 const ws = new WebSocket(WS_URL, {
   headers: {
     Authorization: `Bearer ${API_KEY}`,
-    origin: "https://api.openai.com",
+    origin: 'https://api.openai.com',
   },
 });
 
 function sendSessionUpdate(useAltVoiceField: boolean) {
   const session: Record<string, unknown> = {
-    type: "realtime",
-    instructions: "Keep replies very short.",
+    type: 'realtime',
+    instructions: 'Keep replies very short.',
   };
 
   if (useAltVoiceField) {
@@ -38,18 +38,18 @@ function sendSessionUpdate(useAltVoiceField: boolean) {
     session.voice = VOICE;
   }
 
-  ws.send(JSON.stringify({ type: "session.update", session }));
+  ws.send(JSON.stringify({ type: 'session.update', session }));
 }
 
-ws.on("open", () => {
+ws.on('open', () => {
   openedAt = Date.now();
   sendSessionUpdate(false);
 
   ws.send(
     JSON.stringify({
-      type: "response.create",
+      type: 'response.create',
       response: {
-        instructions: "Greet briefly in one short sentence.",
+        instructions: 'Greet briefly in one short sentence.',
       },
     })
   );
@@ -57,8 +57,8 @@ ws.on("open", () => {
 
 type EventPayload = Record<string, unknown> & { type?: string };
 
-ws.on("message", (buf) => {
-  const parsed = safeParseJson(buf.toString("utf8"));
+ws.on('message', (buf) => {
+  const parsed = safeParseJson(buf.toString('utf8'));
   if (!parsed) {
     return;
   }
@@ -68,7 +68,7 @@ ws.on("message", (buf) => {
 function safeParseJson(data: string): EventPayload | undefined {
   try {
     const obj = JSON.parse(data);
-    return obj && typeof obj === "object" ? (obj as EventPayload) : undefined;
+    return obj && typeof obj === 'object' ? (obj as EventPayload) : undefined;
   } catch {
     return;
   }
@@ -76,18 +76,18 @@ function safeParseJson(data: string): EventPayload | undefined {
 
 function handleEvent(event: EventPayload): void {
   switch (event.type) {
-    case "session.updated":
+    case 'session.updated':
       configured = true;
       return;
-    case "response.audio.delta":
-    case "response.output_audio.delta":
+    case 'response.audio.delta':
+    case 'response.output_audio.delta':
       handleAudioDelta(event);
       return;
-    case "response.done":
-    case "response.completed":
+    case 'response.done':
+    case 'response.completed':
       handleResponseCompleted();
       return;
-    case "error":
+    case 'error':
       handleError(event);
       return;
     default:
@@ -102,13 +102,13 @@ function handleAudioDelta(event: EventPayload): void {
     firstAudioAt = Date.now();
   }
 
-  let delta = "";
-  if (typeof event.delta === "string") {
+  let delta = '';
+  if (typeof event.delta === 'string') {
     delta = event.delta;
-  } else if (typeof event.data === "string") {
+  } else if (typeof event.data === 'string') {
     delta = event.data;
   }
-  audioBytes += Buffer.from(delta, "base64").length;
+  audioBytes += Buffer.from(delta, 'base64').length;
 }
 
 function handleResponseCompleted(): void {
@@ -133,13 +133,13 @@ function handleResponseCompleted(): void {
 
 function handleError(event: EventPayload): void {
   const err = (event.error || event) as Record<string, unknown>;
-  const code = typeof err.code === "string" ? err.code : undefined;
-  const errType = typeof err.type === "string" ? err.type : undefined;
-  const param = typeof err.param === "string" ? err.param : undefined;
+  const code = typeof err.code === 'string' ? err.code : undefined;
+  const errType = typeof err.type === 'string' ? err.type : undefined;
+  const param = typeof err.param === 'string' ? err.param : undefined;
 
   if (
-    (code === "unknown_parameter" || errType === "unknown_parameter") &&
-    (param === "session.voice" || param === "voice") &&
+    (code === 'unknown_parameter' || errType === 'unknown_parameter') &&
+    (param === 'session.voice' || param === 'voice') &&
     !triedAltVoiceField
   ) {
     triedAltVoiceField = true;
@@ -147,18 +147,18 @@ function handleError(event: EventPayload): void {
     return;
   }
 
-  console.error("Realtime error", JSON.stringify(event, null, 2));
+  console.error('Realtime error', JSON.stringify(event, null, 2));
   process.exit(1);
 }
 
-ws.on("close", (code, reason) => {
+ws.on('close', (code, reason) => {
   if (!audioBytes) {
-    console.error("WS closed without audio.", code, reason?.toString?.());
+    console.error('WS closed without audio.', code, reason?.toString?.());
     process.exit(1);
   }
 });
 
-ws.on("error", (err) => {
-  console.error("WS error", err);
+ws.on('error', (err) => {
+  console.error('WS error', err);
   process.exit(1);
 });

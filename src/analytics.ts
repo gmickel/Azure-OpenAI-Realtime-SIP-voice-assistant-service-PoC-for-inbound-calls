@@ -12,10 +12,12 @@ export type CallMetrics = {
   responseCount: number;
   userSpeechEvents: number;
   bargeInEvents: number;
-  status: "active" | "completed" | "failed" | "transferred";
+  status: 'active' | 'completed' | 'failed' | 'transferred';
   transferReason?: string;
-  sentiment?: "positive" | "neutral" | "negative";
+  sentiment?: 'positive' | 'neutral' | 'negative';
   metadata: Record<string, unknown>;
+  callerPhone?: string;
+  callerName?: string;
 };
 
 export type ToolCallMetric = {
@@ -29,9 +31,9 @@ export type ToolCallMetric = {
 
 export type TranscriptEntry = {
   timestamp: number;
-  speaker: "user" | "assistant";
+  speaker: 'user' | 'assistant';
   text: string;
-  sentiment?: "positive" | "neutral" | "negative";
+  sentiment?: 'positive' | 'neutral' | 'negative';
 };
 
 export type SystemStats = {
@@ -77,7 +79,7 @@ class AnalyticsEngine {
       responseCount: 0,
       userSpeechEvents: 0,
       bargeInEvents: 0,
-      status: "active",
+      status: 'active',
       metadata: {},
     };
 
@@ -88,7 +90,7 @@ class AnalyticsEngine {
 
   endCall(
     callId: string,
-    status: "completed" | "failed" | "transferred" = "completed"
+    status: 'completed' | 'failed' | 'transferred' = 'completed'
   ): void {
     const metrics = this.callMetrics.get(callId);
     if (!metrics) {
@@ -104,11 +106,11 @@ class AnalyticsEngine {
       this.systemStats.activeCalls - 1
     );
 
-    if (status === "completed") {
+    if (status === 'completed') {
       this.systemStats.completedCalls += 1;
-    } else if (status === "failed") {
+    } else if (status === 'failed') {
       this.systemStats.failedCalls += 1;
-    } else if (status === "transferred") {
+    } else if (status === 'transferred') {
       this.systemStats.transferredCalls += 1;
     }
 
@@ -124,10 +126,8 @@ class AnalyticsEngine {
     metrics.toolCalls.push(metric);
     this.systemStats.totalToolCalls += 1;
 
-    if (!this.systemStats.toolCallsByType[metric.name]) {
-      this.systemStats.toolCallsByType[metric.name] = 0;
-    }
-    this.systemStats.toolCallsByType[metric.name] += 1;
+    const currentCount = this.systemStats.toolCallsByType[metric.name] ?? 0;
+    this.systemStats.toolCallsByType[metric.name] = currentCount + 1;
   }
 
   recordTranscript(callId: string, entry: TranscriptEntry): void {
@@ -139,7 +139,7 @@ class AnalyticsEngine {
     metrics.transcripts.push(entry);
 
     // Simple sentiment analysis based on keywords
-    if (entry.speaker === "user") {
+    if (entry.speaker === 'user') {
       entry.sentiment = this.analyzeSentiment(entry.text);
       metrics.sentiment = entry.sentiment;
     }
@@ -180,36 +180,36 @@ class AnalyticsEngine {
     }
   }
 
-  private analyzeSentiment(text: string): "positive" | "neutral" | "negative" {
+  private analyzeSentiment(text: string): 'positive' | 'neutral' | 'negative' {
     const lowerText = text.toLowerCase();
 
     const positiveWords = [
-      "thank",
-      "thanks",
-      "great",
-      "excellent",
-      "perfect",
-      "good",
-      "appreciate",
-      "wonderful",
-      "amazing",
-      "helpful",
-      "yes",
+      'thank',
+      'thanks',
+      'great',
+      'excellent',
+      'perfect',
+      'good',
+      'appreciate',
+      'wonderful',
+      'amazing',
+      'helpful',
+      'yes',
     ];
     const negativeWords = [
-      "frustrated",
-      "angry",
-      "upset",
-      "terrible",
-      "bad",
-      "horrible",
-      "worst",
-      "disappointed",
-      "complaint",
-      "problem",
-      "issue",
-      "no",
-      "not working",
+      'frustrated',
+      'angry',
+      'upset',
+      'terrible',
+      'bad',
+      'horrible',
+      'worst',
+      'disappointed',
+      'complaint',
+      'problem',
+      'issue',
+      'no',
+      'not working',
     ];
 
     const positiveCount = positiveWords.filter((word) =>
@@ -220,12 +220,12 @@ class AnalyticsEngine {
     ).length;
 
     if (positiveCount > negativeCount) {
-      return "positive";
+      return 'positive';
     }
     if (negativeCount > positiveCount) {
-      return "negative";
+      return 'negative';
     }
-    return "neutral";
+    return 'neutral';
   }
 
   private updateAverageCallDuration(): void {
@@ -251,7 +251,7 @@ class AnalyticsEngine {
 
   getActiveCalls(): CallMetrics[] {
     return Array.from(this.callMetrics.values()).filter(
-      (m) => m.status === "active"
+      (m) => m.status === 'active'
     );
   }
 
@@ -285,17 +285,17 @@ class AnalyticsEngine {
 
     const duration = metrics.duration
       ? `${Math.floor(metrics.duration / 1000)}s`
-      : "ongoing";
-    const toolCallSummary = metrics.toolCalls.map((t) => t.name).join(", ");
+      : 'ongoing';
+    const toolCallSummary = metrics.toolCalls.map((t) => t.name).join(', ');
     const transcriptCount = metrics.transcripts.length;
 
-    return `Call ${callId.slice(0, 8)}: ${duration}, ${transcriptCount} messages, tools: [${toolCallSummary}], sentiment: ${metrics.sentiment ?? "unknown"}`;
+    return `Call ${callId.slice(0, 8)}: ${duration}, ${transcriptCount} messages, tools: [${toolCallSummary}], sentiment: ${metrics.sentiment ?? 'unknown'}`;
   }
 
   // Clean up old completed calls (keep last 100)
   cleanupOldCalls(): void {
     const allCalls = Array.from(this.callMetrics.entries())
-      .filter(([_, m]) => m.status !== "active")
+      .filter(([_, m]) => m.status !== 'active')
       .sort(([_, a], [__, b]) => b.startTime - a.startTime);
 
     if (allCalls.length > 100) {
