@@ -30,6 +30,7 @@ type CallSession = {
   heardUser: boolean;
   bargeGuardUntil: number;
   pendingFollowUps: ResponseRequest[];
+  responseTextBuffers: Map<string, string>;
 };
 
 type RealtimeEventHandler = (
@@ -111,7 +112,14 @@ function logResponseTextDelta(
   event: Record<string, unknown>
 ): void {
   const delta = getString(event.delta);
-  if (delta) {
+  const response = isRecord(event.response) ? event.response : undefined;
+  const responseId = response ? getString(response.id) : undefined;
+
+  if (delta && responseId) {
+    // Accumulate response text for transcript
+    const current = session.responseTextBuffers.get(responseId) || "";
+    session.responseTextBuffers.set(responseId, current + delta);
+
     logCallLifecycle(session.callId, "response_text_delta", {
       text: truncate(delta, 160),
     });
@@ -756,6 +764,7 @@ function attachSidebandWebSocket(callId: string): void {
     heardUser: false,
     bargeGuardUntil: 0,
     pendingFollowUps: [],
+    responseTextBuffers: new Map(),
   };
 
   sessions.set(callId, session);
@@ -891,6 +900,18 @@ function updateResponseLifecycle(
   if (action === "add") {
     session.activeResponses.add(responseId);
   } else {
+    // Record assistant transcript when response completes
+    const responseText = session.responseTextBuffers.get(responseId);
+    if (responseText && responseText.trim().length > 0) {
+      analytics.recordTranscript(session.callId, {
+        timestamp: Date.now(),
+        speaker: "assistant",
+        text: responseText.trim(),
+      });
+      logger.transcript(session.callId, "assistant", responseText.trim());
+    }
+    session.responseTextBuffers.delete(responseId);
+
     session.activeResponses.delete(responseId);
     if (session.activeResponses.size === 0) {
       flushPendingFollowUps(session);
@@ -999,6 +1020,10 @@ function maybeRespond(session: CallSession, request: ResponseRequest): void {
       activeResponses: session.activeResponses.size,
       snippet,
     });
+    logger.debug(
+      `Response skipped (active): ${request.source} - ${session.activeResponses.size} active`,
+      { snippet }
+    );
     if (request.queueIfBlocked) {
       enqueueFollowUp(session, request);
     }
@@ -1010,6 +1035,10 @@ function maybeRespond(session: CallSession, request: ResponseRequest): void {
       waitMs: session.responseGateUntil - now,
       snippet,
     });
+    logger.debug(
+      `Response skipped (gate): ${request.source} - ${session.responseGateUntil - now}ms remaining`,
+      { snippet }
+    );
     if (request.queueIfBlocked) {
       enqueueFollowUp(session, request);
     }
@@ -1024,6 +1053,9 @@ function maybeRespond(session: CallSession, request: ResponseRequest): void {
     source: request.source,
     snippet,
   });
+  logger.call(session.callId, `Response enqueued: ${request.source}`, {
+    snippet,
+  });
   analytics.recordResponse(session.callId);
   session.responseGateUntil = now + session.minGapMs;
 }
@@ -1034,6 +1066,10 @@ function enqueueFollowUp(session: CallSession, request: ResponseRequest): void {
     source: request.source,
     queueLength: session.pendingFollowUps.length,
   });
+  logger.call(
+    session.callId,
+    `Follow-up queued: ${request.source} (queue: ${session.pendingFollowUps.length})`
+  );
 }
 
 function flushPendingFollowUps(session: CallSession): void {
@@ -1042,6 +1078,10 @@ function flushPendingFollowUps(session: CallSession): void {
   }
   const next = session.pendingFollowUps.shift();
   if (next) {
+    logger.call(
+      session.callId,
+      `Flushing follow-up: ${next.source} (${session.pendingFollowUps.length} remaining)`
+    );
     maybeRespond(session, next);
   }
 }
@@ -1153,9 +1193,13 @@ async function fulfillToolCall(
       );
     }
 
+    // Use custom follow-up or build one that includes the result
     const followUp =
       result.followUpInstructions ??
-      "Summarize the result briefly and confirm the next steps in clear, concise English.";
+      `The ${pending.name} tool returned this result: ${JSON.stringify(result.output)}. Explain this result to the caller in a natural, conversational way. Keep it concise and helpful.`;
+
+    logger.call(session.callId, `Sending tool follow-up for ${pending.name}`);
+
     maybeRespond(session, {
       instructions: followUp,
       source: "tool_follow_up_success",
