@@ -9,25 +9,7 @@ import { logger } from './logger';
 import { logCallLifecycle, logTranscript, logWebhook } from './observe';
 import { greetingPrompt, systemPrompt } from './prompts';
 import { realtimeToolSchemas, runTool } from './tools';
-
-const SIP_PHONE_REGEX = /sip:(\+?\d+)@/;
-
-function extractCallerPhone(sipHeaders: unknown[]): string | undefined {
-  const fromHeader = sipHeaders.find((h: unknown) => {
-    if (!isRecord(h)) {
-      return false;
-    }
-    return getString(h.name)?.toLowerCase() === 'from';
-  });
-
-  if (fromHeader && isRecord(fromHeader)) {
-    const fromValue = getString(fromHeader.value);
-    const phoneMatch = fromValue?.match(SIP_PHONE_REGEX);
-    return phoneMatch?.[1];
-  }
-
-  return;
-}
+import { extractCallerPhone } from './utils';
 
 type PendingToolCall = {
   name: string;
