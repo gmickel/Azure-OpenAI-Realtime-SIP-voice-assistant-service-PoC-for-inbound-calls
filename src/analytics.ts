@@ -12,6 +12,10 @@ export type CallMetrics = {
   responseCount: number;
   userSpeechEvents: number;
   bargeInEvents: number;
+  latencies: number[];
+  pendingUserTurnAt?: number;
+  lastLatencyMs?: number;
+  firstResponseLatencyMs?: number;
   status: 'active' | 'completed' | 'failed' | 'transferred';
   transferReason?: string;
   sentiment?: 'positive' | 'neutral' | 'negative';
@@ -45,6 +49,9 @@ export type SystemStats = {
   averageCallDuration: number;
   totalToolCalls: number;
   toolCallsByType: Record<string, number>;
+  averageLatencyMs: number;
+  totalLatencyMs: number;
+  latencySamples: number;
   uptime: number;
   startTime: number;
 };
@@ -65,6 +72,9 @@ class AnalyticsEngine {
       averageCallDuration: 0,
       totalToolCalls: 0,
       toolCallsByType: {},
+      averageLatencyMs: 0,
+      totalLatencyMs: 0,
+      latencySamples: 0,
       uptime: 0,
       startTime: this.startTime,
     };
@@ -79,6 +89,7 @@ class AnalyticsEngine {
       responseCount: 0,
       userSpeechEvents: 0,
       bargeInEvents: 0,
+      latencies: [],
       status: 'active',
       metadata: {},
     };
@@ -150,6 +161,38 @@ class AnalyticsEngine {
     if (metrics) {
       metrics.responseCount += 1;
     }
+  }
+
+  markUserTurnStart(callId: string): void {
+    const metrics = this.callMetrics.get(callId);
+    if (metrics && metrics.pendingUserTurnAt === undefined) {
+      metrics.pendingUserTurnAt = Date.now();
+    }
+  }
+
+  markAssistantResponse(
+    callId: string,
+    at: number = Date.now()
+  ): number | undefined {
+    const metrics = this.callMetrics.get(callId);
+    if (!metrics || metrics.pendingUserTurnAt === undefined) {
+      return;
+    }
+
+    const latency = at - metrics.pendingUserTurnAt;
+    metrics.pendingUserTurnAt = undefined;
+    metrics.lastLatencyMs = latency;
+    metrics.latencies.push(latency);
+    if (metrics.firstResponseLatencyMs === undefined) {
+      metrics.firstResponseLatencyMs = latency;
+    }
+
+    this.systemStats.latencySamples += 1;
+    this.systemStats.totalLatencyMs += latency;
+    this.systemStats.averageLatencyMs =
+      this.systemStats.totalLatencyMs / this.systemStats.latencySamples;
+
+    return latency;
   }
 
   recordSpeechEvent(callId: string): void {

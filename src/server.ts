@@ -51,6 +51,10 @@ const sessions = new Map<string, CallSession>();
 const TRAILING_SLASH_REGEX = /\/$/;
 const V1_REALTIME_REGEX = /\/v1\/realtime$/;
 const REALTIME_SUFFIX_REGEX = /\/realtime$/;
+// Tunable timings tuned for Azure SIP responsiveness
+const TURN_RESPONSE_DELAY_MS = 150;
+const GREETING_BARGE_GUARD_MS = 2000;
+const DEFAULT_MIN_RESPONSE_GAP_MS = 500;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -118,6 +122,10 @@ function logResponseTextDelta(
   const responseId = response ? getString(response.id) : undefined;
 
   if (delta && responseId) {
+    const latency = analytics.markAssistantResponse(session.callId);
+    if (latency !== undefined) {
+      logCallLifecycle(session.callId, 'latency_measured_ms', { latency });
+    }
     // Accumulate response text for transcript
     const current = session.responseTextBuffers.get(responseId) || '';
     session.responseTextBuffers.set(responseId, current + delta);
@@ -134,6 +142,10 @@ function logResponseAudioDelta(
 ): void {
   const chunk = getString(event.delta);
   if (chunk) {
+    const latency = analytics.markAssistantResponse(session.callId);
+    if (latency !== undefined) {
+      logCallLifecycle(session.callId, 'latency_measured_ms', { latency });
+    }
     logCallLifecycle(session.callId, 'response_audio_chunk', {
       bytes: chunk.length,
     });
@@ -169,14 +181,17 @@ function handleSpeechStopped(session: CallSession): void {
   if (!session.heardUser) {
     return;
   }
+  analytics.markUserTurnStart(session.callId);
   if (session.pendingTurnTimer) {
     clearTimeout(session.pendingTurnTimer);
   }
   session.pendingTurnTimer = setTimeout(() => {
     requestTurnResponse(session);
     session.pendingTurnTimer = undefined;
-  }, 150);
-  logCallLifecycle(session.callId, 'turn_timer_scheduled', { delayMs: 150 });
+  }, TURN_RESPONSE_DELAY_MS);
+  logCallLifecycle(session.callId, 'turn_timer_scheduled', {
+    delayMs: TURN_RESPONSE_DELAY_MS,
+  });
 }
 
 const realtimeEventHandlers: Record<string, RealtimeEventHandler> = {
@@ -673,6 +688,12 @@ app.get('/dashboard', (c) => {
       transition: all 0.3s;
     }
 
+    .call-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
     .call-item:hover {
       background: rgba(255,255,255,0.04);
       border-left-width: 6px;
@@ -976,101 +997,107 @@ app.get('/dashboard', (c) => {
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-label">Active Calls</div>
-        <div class="stat-value">${stats.activeCalls}</div>
+        <div class="stat-value" data-stat="active">${stats.activeCalls}</div>
         <div class="stat-sublabel">In Progress</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Total Sessions</div>
-        <div class="stat-value">${stats.totalCalls}</div>
+        <div class="stat-value" data-stat="total">${stats.totalCalls}</div>
         <div class="stat-sublabel">All Time</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Completed</div>
-        <div class="stat-value">${stats.completedCalls}</div>
+        <div class="stat-value" data-stat="completed">${stats.completedCalls}</div>
         <div class="stat-sublabel">Successful</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Tool Calls</div>
-        <div class="stat-value">${stats.totalToolCalls}</div>
+        <div class="stat-value" data-stat="tools">${stats.totalToolCalls}</div>
         <div class="stat-sublabel">Executed</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Avg Duration</div>
-        <div class="stat-value">${Math.round(stats.averageCallDuration / 1000)}s</div>
+        <div class="stat-value" data-stat="avgDuration">${Math.round(stats.averageCallDuration / 1000)}s</div>
         <div class="stat-sublabel">Per Call</div>
       </div>
       <div class="stat-card">
+        <div class="stat-label">Avg Latency</div>
+        <div class="stat-value" data-stat="avgLatency">${Math.round(stats.averageLatencyMs)}ms</div>
+        <div class="stat-sublabel">User → Reply</div>
+      </div>
+      <div class="stat-card">
         <div class="stat-label">System Uptime</div>
-        <div class="stat-value">${Math.floor(stats.uptime / (1000 * 60 * 60))}h</div>
-        <div class="stat-sublabel">${Math.floor((stats.uptime % (1000 * 60 * 60)) / (1000 * 60))}m</div>
+        <div class="stat-value" data-stat="uptimeHours">${Math.floor(stats.uptime / (1000 * 60 * 60))}h</div>
+        <div class="stat-sublabel" data-stat="uptimeMinutes">${Math.floor((stats.uptime % (1000 * 60 * 60)) / (1000 * 60))}m</div>
       </div>
     </div>
 
-    ${
-      activeCalls.length > 0
-        ? `
-    <div class="section">
+    <div class="section" id="active-calls-section">
       <div class="section-header">
         <span>Active Calls</span>
         <div class="live-indicator">LIVE</div>
       </div>
-      ${activeCalls
-        .map(
-          (call) => `
-        <div class="call-item active">
-          <div class="call-header">
-            <span class="call-id">CALL_${call.callId.slice(0, 8).toUpperCase()}</span>
-            <span class="badge active">ACTIVE</span>
+      <div class="call-grid" id="active-call-grid">
+        ${
+          activeCalls.length === 0
+            ? '<div class="empty-state">No active calls</div>'
+            : activeCalls
+                .map(
+                  (call) => `
+          <div class="call-item active">
+            <div class="call-header">
+              <span class="call-id">CALL_${call.callId.slice(0, 8).toUpperCase()}</span>
+              <span class="badge active">ACTIVE</span>
+            </div>
+            <div class="call-meta">
+              ${
+                call.metadata.callerPhone
+                  ? `<div class="meta-item">
+                <span class="meta-label">📞 Caller:</span>
+                <span class="meta-value">${call.metadata.callerPhone}</span>
+              </div>`
+                  : ''
+              }
+              <div class="meta-item">
+                <span class="meta-label">Duration:</span>
+                <span class="meta-value">${Math.floor((Date.now() - call.startTime) / 1000)}s</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Tools:</span>
+                <span class="meta-value">${call.toolCalls.length}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Messages:</span>
+                <span class="meta-value">${call.transcripts.length}</span>
+              </div>
+              ${
+                call.sentiment
+                  ? `
+              <div class="meta-item">
+                <span class="meta-label">Sentiment:</span>
+                <span class="meta-value sentiment-${call.sentiment}">${call.sentiment.toUpperCase()}</span>
+              </div>
+              `
+                  : ''
+              }
+            </div>
           </div>
-          <div class="call-meta">
-            ${
-              call.metadata.callerPhone
-                ? `<div class="meta-item">
-              <span class="meta-label">📞 Caller:</span>
-              <span class="meta-value">${call.metadata.callerPhone}</span>
-            </div>`
-                : ''
-            }
-            <div class="meta-item">
-              <span class="meta-label">Duration:</span>
-              <span class="meta-value">${Math.floor((Date.now() - call.startTime) / 1000)}s</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Tools:</span>
-              <span class="meta-value">${call.toolCalls.length}</span>
-            </div>
-            <div class="meta-item">
-              <span class="meta-label">Messages:</span>
-              <span class="meta-value">${call.transcripts.length}</span>
-            </div>
-            ${
-              call.sentiment
-                ? `
-            <div class="meta-item">
-              <span class="meta-label">Sentiment:</span>
-              <span class="meta-value sentiment-${call.sentiment}">${call.sentiment.toUpperCase()}</span>
-            </div>
-            `
-                : ''
-            }
-          </div>
-        </div>
-      `
-        )
-        .join('')}
+        `
+                )
+                .join('')
+        }
+      </div>
     </div>
-    `
-        : ''
-    }
 
-    <div class="section">
+    <div class="section" id="recent-calls-section">
       <div class="section-header">Recent Activity</div>
-      ${
-        recentCalls.length === 0
-          ? '<div class="empty-state">No calls recorded yet</div>'
-          : recentCalls
-              .map(
-                (call) => `
+      <div class="call-grid" id="recent-call-grid">
+        ${
+          recentCalls.length === 0
+            ? '<div class="empty-state">No calls recorded yet</div>'
+            : recentCalls
+                .map(
+                  (call) => `
         <div class="call-item ${call.status}">
           <div class="call-header">
             <span class="call-id">CALL_${call.callId.slice(0, 8).toUpperCase()}</span>
@@ -1119,12 +1146,13 @@ app.get('/dashboard', (c) => {
           }
         </div>
       `
-              )
-              .join('')
-      }
+                )
+                .join('')
+        }
+      </div>
     </div>
 
-    <div class="section">
+    <div class="section" id="tool-usage-section">
       <div class="section-header">Tool Usage Stats</div>
       ${
         Object.entries(stats.toolCallsByType).length === 0
@@ -1215,32 +1243,35 @@ app.get('/dashboard', (c) => {
       try {
         const { stats, activeCalls, recentCalls } = JSON.parse(event.data);
 
-        // Update stat values only (non-intrusive)
-        const statValues = document.querySelectorAll('.stat-value');
-        if (statValues[0]) statValues[0].textContent = stats.activeCalls;
-        if (statValues[1]) statValues[1].textContent = stats.totalCalls;
-        if (statValues[2]) statValues[2].textContent = stats.completedCalls;
-        if (statValues[3]) statValues[3].textContent = stats.totalToolCalls;
-        if (statValues[4]) statValues[4].textContent = Math.round(stats.averageCallDuration / 1000) + 's';
-        if (statValues[5]) statValues[5].textContent = Math.floor(stats.uptime / (1000 * 60 * 60)) + 'h';
+        const setStat = (key, value) => {
+          const el = document.querySelector('[data-stat="' + key + '"]');
+          if (el) {
+            el.textContent = value;
+          }
+        };
 
-        // Update uptime sublabel
-        const uptimeSublabel = document.querySelector('.stat-card:last-child .stat-sublabel');
-        if (uptimeSublabel) {
-          uptimeSublabel.textContent = Math.floor((stats.uptime % (1000 * 60 * 60)) / (1000 * 60)) + 'm';
-        }
+        setStat('active', stats.activeCalls);
+        setStat('total', stats.totalCalls);
+        setStat('completed', stats.completedCalls);
+        setStat('tools', stats.totalToolCalls);
+        setStat('avgDuration', Math.round(stats.averageCallDuration / 1000) + 's');
+        setStat('avgLatency', Math.round(stats.averageLatencyMs) + 'ms');
+        setStat('uptimeHours', Math.floor(stats.uptime / (1000 * 60 * 60)) + 'h');
+        setStat(
+          'uptimeMinutes',
+          Math.floor((stats.uptime % (1000 * 60 * 60)) / (1000 * 60)) + 'm'
+        );
 
         // Update active calls section
-        const activeCallsSection = document.querySelector('.section:nth-child(2) .call-grid');
+        const activeCallsSection = document.getElementById('active-call-grid');
         if (activeCallsSection) {
-          if (activeCalls.length === 0) {
-            activeCallsSection.innerHTML = '<div class="empty-state">No active calls</div>';
-          } else {
-            activeCallsSection.innerHTML = activeCalls.map(call => \`
-              <div class="call-card active">
+          activeCallsSection.innerHTML = activeCalls.length === 0
+            ? '<div class="empty-state">No active calls</div>'
+            : activeCalls.map(call => \`
+              <div class="call-item active">
                 <div class="call-header">
-                  <span class="call-id">\${call.callId.slice(0, 8).toUpperCase()}</span>
-                  <span class="badge \${call.status}">\${call.status.toUpperCase()}</span>
+                  <span class="call-id">CALL_\${call.callId.slice(0, 8).toUpperCase()}</span>
+                  <span class="badge active">ACTIVE</span>
                 </div>
                 <div class="call-meta">
                   \${call.metadata.callerPhone ? \`<div class="meta-item">
@@ -1249,7 +1280,7 @@ app.get('/dashboard', (c) => {
                   </div>\` : ''}
                   <div class="meta-item">
                     <span class="meta-label">Duration:</span>
-                    <span class="meta-value">\${call.duration ? Math.floor((Date.now() - call.startTime) / 1000) + 's' : 'N/A'}</span>
+                    <span class="meta-value">\${Math.floor((Date.now() - call.startTime) / 1000)}s</span>
                   </div>
                   <div class="meta-item">
                     <span class="meta-label">Tools:</span>
@@ -1259,22 +1290,24 @@ app.get('/dashboard', (c) => {
                     <span class="meta-label">Messages:</span>
                     <span class="meta-value">\${call.transcripts.length}</span>
                   </div>
+                  \${call.sentiment ? \`<div class="meta-item">
+                    <span class="meta-label">Sentiment:</span>
+                    <span class="meta-value sentiment-\${call.sentiment}">\${call.sentiment.toUpperCase()}</span>
+                  </div>\` : ''}
                 </div>
               </div>
             \`).join('');
-          }
         }
 
         // Update recent activity section
-        const recentActivitySection = document.querySelector('.section:nth-child(3) .call-grid');
+        const recentActivitySection = document.getElementById('recent-call-grid');
         if (recentActivitySection) {
-          if (recentCalls.length === 0) {
-            recentActivitySection.innerHTML = '<div class="empty-state">No recent calls</div>';
-          } else {
-            recentActivitySection.innerHTML = recentCalls.map(call => \`
-              <div class="call-card">
+          recentActivitySection.innerHTML = recentCalls.length === 0
+            ? '<div class="empty-state">No recent calls</div>'
+            : recentCalls.map(call => \`
+              <div class="call-item \${call.status}">
                 <div class="call-header">
-                  <span class="call-id">\${call.callId.slice(0, 8).toUpperCase()}</span>
+                  <span class="call-id">CALL_\${call.callId.slice(0, 8).toUpperCase()}</span>
                   <span class="badge \${call.status}">\${call.status.toUpperCase()}</span>
                 </div>
                 <div class="call-meta">
@@ -1306,26 +1339,33 @@ app.get('/dashboard', (c) => {
                 \` : ''}
               </div>
             \`).join('');
-          }
         }
 
         // Update tool usage stats section
-        const toolStatsSection = document.querySelector('.section:nth-child(4)');
-        if (toolStatsSection) {
-          const toolContent = Object.entries(stats.toolCallsByType || {}).length === 0
-            ? '<div class="empty-state">No tools used yet</div>'
-            : \`<div class="tool-bar">\${Object.entries(stats.toolCallsByType).map(([tool, count]) => \`
-                <div class="tool-item">
-                  <span class="tool-name">\${tool}</span>
-                  <div class="tool-bar-bg">
-                    <div class="tool-bar-fill" style="width: \${(count / stats.totalToolCalls) * 100}%"></div>
-                  </div>
-                  <span class="tool-count">\${count}</span>
-                </div>
-              \`).join('')}</div>\`;
 
-          toolStatsSection.innerHTML = \`<div class="section-header">Tool Usage Stats</div>\${toolContent}\`;
+        const toolStatsSection = document.getElementById('tool-usage-section');
+        if (toolStatsSection) {
+          const toolEntries = Object.entries(stats.toolCallsByType || {});
+          const toolContent = toolEntries.length === 0
+            ? '<div class="empty-state">No tools used yet</div>'
+            : '<div class="tool-bar">' +
+              toolEntries
+                .map(
+                  ([tool, count]) =>
+                    '<div class="tool-item">' +
+                    '<span class="tool-name">' + tool + '</span>' +
+                    '<div class="tool-bar-bg">' +
+                    '<div class="tool-bar-fill" style="width: ' + (count / stats.totalToolCalls) * 100 + '%"></div>' +
+                    '</div>' +
+                    '<span class="tool-count">' + count + '</span>' +
+                    '</div>'
+                )
+                .join('') +
+              '</div>';
+
+          toolStatsSection.innerHTML = '<div class="section-header">Tool Usage Stats</div>' + toolContent;
         }
+
       } catch (e) {
         console.error('Failed to update dashboard:', e);
       }
@@ -1458,7 +1498,7 @@ function attachSidebandWebSocket(callId: string): void {
     greeted: false,
     toolsUnlocked: false,
     responseGateUntil: 0,
-    minGapMs: 500,
+    minGapMs: DEFAULT_MIN_RESPONSE_GAP_MS,
     userSpeaking: false,
     heardUser: false,
     bargeGuardUntil: 0,
@@ -1489,7 +1529,7 @@ function attachSidebandWebSocket(callId: string): void {
         source: 'greeting',
       });
       session.greeted = true;
-      session.bargeGuardUntil = Date.now() + 2000;
+      session.bargeGuardUntil = Date.now() + GREETING_BARGE_GUARD_MS;
     }
   });
 
@@ -1506,7 +1546,14 @@ function attachSidebandWebSocket(callId: string): void {
       return;
     }
 
-    await routeRealtimeEvent(session, parsed);
+    try {
+      await routeRealtimeEvent(session, parsed);
+    } catch (error) {
+      logger.error('Realtime event handling failed', error);
+      logCallLifecycle(session.callId, 'rt_event_error', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 
   ws.on('close', () => {
@@ -1632,6 +1679,10 @@ function updateResponseLifecycle(
       });
       logger.transcript(session.callId, 'assistant', responseText.trim());
     }
+    const latency = analytics.markAssistantResponse(session.callId);
+    if (latency !== undefined) {
+      logCallLifecycle(session.callId, 'latency_measured_ms', { latency });
+    }
     session.responseTextBuffers.delete(responseId);
 
     session.activeResponses.delete(responseId);
@@ -1688,6 +1739,7 @@ function logInputTranscript(
       speaker: 'user',
       text: transcript,
     });
+    analytics.markUserTurnStart(session.callId);
 
     // Enhanced logging
     logger.transcript(session.callId, 'user', transcript);
