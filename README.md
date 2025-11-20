@@ -40,6 +40,13 @@ The dashboard provides:
 
 Perfect for demos, monitoring, and understanding your voice assistant's performance at a glance.
 
+### Latency instrumentation
+- The dashboard now shows **Avg Latency (ms)**, derived from user transcript completion to first assistant response per turn.
+- Raw values are streamed via `/api/events` and exposed in `/api/stats` under `averageLatencyMs`.
+- Console logs include `latency_measured_ms` lifecycle entries for deeper analysis.
+- Expect lower latency when the webhook server and Azure Realtime resource run **in the same Azure region** (avoid hairpin across clouds).
+- Observed in local tests (server on laptop, Azure SIP in-cloud) ~1.3s user-stop → assistant audio start; co-locating the server in Azure should reduce this significantly.
+
 ---
 
 ## ✨ Key Features
@@ -54,6 +61,7 @@ Perfect for demos, monitoring, and understanding your voice assistant's performa
 ### 📊 Monitoring & Analytics
 - **Real-time dashboard** with beautiful UI
 - **Comprehensive analytics** — Call duration, tool usage, sentiment analysis
+- **Latency tracing** — Per-turn latency (user speech → assistant reply) captured and averaged; visible on the dashboard and via `/api/stats`
 - **Admin API** — RESTful endpoints for integrations
 - **Enhanced logging** — Color-coded console output with call summaries
 - **Transcript viewer** — Full conversation history per call
