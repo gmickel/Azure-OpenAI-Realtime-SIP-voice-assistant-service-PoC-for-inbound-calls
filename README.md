@@ -77,6 +77,9 @@ Perfect for demos, monitoring, and understanding your voice assistant's performa
 
 ## 🏗️ Architecture
 
+![Azure OpenAI Realtime Voice Assistant Overview](./img/arch.jpeg)
+
+**Quick Reference:**
 ```
 PSTN ↔ Twilio Elastic SIP Trunk → Azure OpenAI Realtime (SIP)
                                  ↘ (Webhook: realtime.call.incoming)
