@@ -394,12 +394,22 @@ app.get('/api/events', (c) => {
         const encoder = new TextEncoder();
 
         const sendUpdate = () => {
-          const stats = analytics.getSystemStats();
-          const activeCalls = analytics.getActiveCalls();
-          const recentCalls = analytics.getRecentCalls(5);
+          try {
+            const stats = analytics.getSystemStats();
+            const activeCalls = analytics.getActiveCalls();
+            const recentCalls = analytics.getRecentCalls(5);
 
-          const data = JSON.stringify({ stats, activeCalls, recentCalls });
-          controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+            const data = JSON.stringify({ stats, activeCalls, recentCalls });
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+          } catch (error) {
+            logger.warning('SSE dashboard payload failed', {
+              message: error instanceof Error ? error.message : String(error),
+            });
+          }
+        };
+
+        const heartbeat = () => {
+          controller.enqueue(encoder.encode(`: ping ${Date.now()}\n\n`));
         };
 
         // Send initial data
@@ -407,19 +417,26 @@ app.get('/api/events', (c) => {
 
         // Send updates every 2 seconds
         const interval = setInterval(sendUpdate, 2000);
+        const heartbeatInterval = setInterval(heartbeat, 15_000);
 
         // Cleanup on close
-        c.req.raw.signal?.addEventListener('abort', () => {
+        const cleanup = () => {
           clearInterval(interval);
+          clearInterval(heartbeatInterval);
           controller.close();
+        };
+
+        c.req.raw.signal?.addEventListener('abort', () => {
+          cleanup();
         });
       },
     }),
     {
       headers: {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Cache-Control': 'no-cache, no-transform',
         Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
       },
     }
   );
