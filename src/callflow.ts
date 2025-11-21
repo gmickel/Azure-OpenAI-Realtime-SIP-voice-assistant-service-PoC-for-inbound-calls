@@ -1,4 +1,5 @@
 import { config } from './config';
+import { logger } from './logger';
 
 export type RealtimeSessionConfig = {
   type: 'realtime';
@@ -11,13 +12,13 @@ export type RealtimeSessionConfig = {
   tool_choice?: 'auto' | 'required' | 'none';
 };
 
-function isAzure() {
+const TRAILING_SLASH_REGEX = /\/$/;
+
+function isAzure(): boolean {
   return config.openaiBaseUrl.includes('.openai.azure.com');
 }
 
-const TRAILING_SLASH_REGEX = /\/$/;
-
-function addApiVersion(url: string) {
+function addApiVersion(url: string): string {
   if (!config.apiVersion) {
     return url;
   }
@@ -37,60 +38,76 @@ function acceptUrl(callId: string): string {
   const url = `${base}/v1/realtime/calls/${encodeURIComponent(callId)}/accept`;
   return isAzure() ? addApiVersion(url) : url;
 }
+
 function referUrl(callId: string): string {
   const base = realtimeBase();
   const url = `${base}/v1/realtime/calls/${encodeURIComponent(callId)}/refer`;
   return isAzure() ? addApiVersion(url) : url;
 }
+
 function hangupUrl(callId: string): string {
   const base = realtimeBase();
   const url = `${base}/v1/realtime/calls/${encodeURIComponent(callId)}/hangup`;
   return isAzure() ? addApiVersion(url) : url;
 }
 
-async function postAbs(
+/**
+ * Helper to make authenticated requests to the OpenAI Realtime API.
+ */
+async function makeOpenAIRequest(
   url: string,
   body?: unknown,
   headers?: Record<string, string>
-) {
+): Promise<void> {
   const common: Record<string, string> = {
     'content-type': 'application/json',
     ...(headers || {}),
   };
+
   if (isAzure()) {
     common['api-key'] = config.apiKey;
   } else {
     common.authorization = `Bearer ${config.apiKey}`;
   }
 
-  console.log('🔗 API Request:', { url, apiVersion: config.apiVersion });
+  logger.debug('API Request', { url, apiVersion: config.apiVersion });
 
   const res = await fetch(url, {
     method: 'POST',
     headers: common,
     body: body ? JSON.stringify(body) : undefined,
   });
+
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     throw new Error(`OpenAI request failed (${res.status}): ${detail}`);
   }
 }
 
+/**
+ * Accepts an incoming call by posting to the /accept endpoint.
+ */
 export async function acceptCall(
   callId: string,
   session: RealtimeSessionConfig
 ): Promise<void> {
   const body = { ...session, model: config.model, type: 'realtime' };
-  await postAbs(acceptUrl(callId), body);
+  await makeOpenAIRequest(acceptUrl(callId), body);
 }
 
+/**
+ * Refers (transfers) a call to a new SIP URI.
+ */
 export async function referCall(
   callId: string,
   targetUri: string
 ): Promise<void> {
-  await postAbs(referUrl(callId), { target_uri: targetUri });
+  await makeOpenAIRequest(referUrl(callId), { target_uri: targetUri });
 }
 
+/**
+ * Hangs up an active call.
+ */
 export async function hangupCall(callId: string): Promise<void> {
-  await postAbs(hangupUrl(callId));
+  await makeOpenAIRequest(hangupUrl(callId));
 }

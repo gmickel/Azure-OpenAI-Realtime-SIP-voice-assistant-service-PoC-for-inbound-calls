@@ -115,6 +115,9 @@ async function waitForServerReady(): Promise<void> {
 
     invariant(webhookRes.status === 200, 'Webhook did not return 200');
 
+    // Give the server a moment to process the async webhook
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
     const accept = recorded.find((req) =>
       req.url?.includes('/v1/realtime/calls/call_test_123/accept')
     );
